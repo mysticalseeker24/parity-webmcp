@@ -18,7 +18,7 @@ export type SpikeStatus =
   | { kind: "failed"; detail: string };
 
 /** The one hardcoded tool. Empty input schema, read-only, trivially verifiable. */
-const GET_PAGE_TITLE = {
+export const GET_PAGE_TITLE = {
   name: "get_page_title",
   title: "Get page title",
   description:

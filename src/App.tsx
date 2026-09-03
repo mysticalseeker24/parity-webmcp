@@ -4,6 +4,10 @@ import { listRegisteredTools, runSpike, type SpikeStatus } from "./lib/spike";
 export default function App() {
   const [status, setStatus] = useState<SpikeStatus | null>(null);
   const [tools, setTools] = useState<string[]>([]);
+  // Captured in the effect rather than read during render: `document.title` is
+  // outside React's model, so reading it inline can show a value that differs
+  // from what the tool actually returned. Same read, same tick, same answer.
+  const [pageTitle, setPageTitle] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -13,6 +17,7 @@ export default function App() {
       const result = await runSpike(controller.signal);
       if (cancelled) return;
       setStatus(result);
+      setPageTitle(document.title);
       setTools(await listRegisteredTools());
     })();
 
@@ -66,7 +71,7 @@ export default function App() {
           </p>
           <p>
             <span className="font-semibold">getTools() returns:</span>{" "}
-            <code className="font-mono">
+            <code className="font-mono" data-testid="registry-listing">
               {tools.length > 0 ? tools.join(", ") : "(empty)"}
             </code>
           </p>
@@ -74,8 +79,11 @@ export default function App() {
       )}
 
       <p className="text-sm text-slate-500">
-        Page title is <code className="font-mono">{document.title}</code> — the
-        value <code className="font-mono">get_page_title</code> returns.
+        Page title is{" "}
+        <code className="font-mono" data-testid="page-title">
+          {pageTitle}
+        </code>{" "}
+        — the value <code className="font-mono">get_page_title</code> returns.
       </p>
     </main>
   );

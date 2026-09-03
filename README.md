@@ -128,6 +128,15 @@ Then either:
 
 Without WebMCP, the app still works: the command palette falls back to the internal registry, and the visual UI is unaffected. Progressive enhancement throughout.
 
+### Verifying
+
+```bash
+npm run verify          # typecheck + unit tests + build + real-browser checks
+npm run verify:browser  # just the browser pass (needs a build and Chrome 149+)
+```
+
+`verify:browser` serves `dist/` and drives headless Chrome with `--enable-blink-features=WebMCP` (the command-line equivalent of the flag) over the DevTools Protocol, asserting that tools register, that `getTools()` returns them, and that `executeTool()` round-trips. Unit tests run against a mock and can only prove internal consistency; this pass runs against Chrome's real implementation. Neither substitutes for opening the deployed URL in ChatGPT's built-in browser, which supports a documented subset — see [`.agent/PHASE1_FINDINGS.md`](./.agent/PHASE1_FINDINGS.md) for what the browser actually does, including three behaviours that contradict `webmcp-types`.
+
 **Try it:** `⌘K` / `Ctrl+K` opens the command palette. Complete a full booking with the keyboard only, no mouse and no agent — then ask an agent to do the same thing and watch the audit trail record both.
 
 ---
