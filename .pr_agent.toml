@@ -1,0 +1,28 @@
+# Minimal Qodo Merge config. Only settings we actually use.
+# Full default config is deliberately NOT copied — defaults drift and break you.
+
+[config]
+model = "gpt-5.6"
+
+[github_app]
+# Commands that run automatically when a PR is opened.
+pr_commands = [
+    "/describe",
+    "/review",
+]
+
+[pr_reviewer]
+require_score_review = false
+require_tests_review = false          # tests are scoped to grant invariants only; see .agent/QODO.md
+require_security_review = true
+persistent_comment = true
+extra_instructions = "Follow REVIEW.md in the repo root. Prioritise: duplicate sources of truth, registerTool called outside registry.ts, grant-gate bypasses, and accessibility defects. Do not flag synthetic fixture data, the intentional prompt-injection test string in src/data, or the absence of a backend."
+
+[pr_description]
+publish_labels = true
+add_original_user_description = true
+
+[pr_code_suggestions]
+num_code_suggestions = 6
+commitable_code_suggestions = false
+extra_instructions = "Enforce best_practices.md. One Zod schema per tool is the single source of truth for that tool's input."
