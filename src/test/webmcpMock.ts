@@ -12,6 +12,7 @@
  *  - `executeTool()` takes arguments as a **JSON string**, not an object, and
  *    rejects an object with "Failed to parse input arguments"
  *  - `executeTool()` resolves to a **JSON string**, not the returned value
+ *  - `execute` is invoked with **one argument** — no `{ signal }` options
  *  - `annotations` are defaulted, so `untrustedContentHint` is always present
  *  - `toolchange` fires whenever the tool list changes
  *
@@ -106,9 +107,14 @@ export class MockModelContext extends EventTarget implements WebMCP.ModelContext
       throw new Error("UnknownError: Failed to parse input arguments");
     }
 
-    const result = await record.definition.execute(input as Record<string, unknown>, {
-      signal: options?.signal ?? new AbortController().signal,
-    });
+    // Chrome 152 calls execute with ONE argument — no options object, no
+    // signal — regardless of what the caller passed (PHASE1_FINDINGS.md §6).
+    // Mirroring that here is what lets a `({ x }, { signal }) =>` destructure
+    // fail in tests instead of only in the browser. The caller's signal is
+    // kept on `executeCalls` so a test can still assert it was supplied.
+    void options;
+    const execute = record.definition.execute as (input: Record<string, unknown>) => unknown;
+    const result = await execute(input as Record<string, unknown>);
     // Chrome serializes the return value on the way back to the caller.
     return JSON.stringify(result ?? null);
   }

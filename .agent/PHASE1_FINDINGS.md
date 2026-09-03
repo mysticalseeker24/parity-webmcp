@@ -77,6 +77,16 @@ whole one-registry-two-callers thesis depends on.
 **Handled by:** the declaration merge in `src/types/webmcp-augment.d.ts`. Delete
 that file if a later release adds it.
 
+## 5b. Zod 4 `toJSONSchema` defaults to `io: "output"`
+
+Not a browser finding, but caught by the same test pass. With the default
+`io`, any field carrying `.default()` is listed under `required` — because on
+the *output* side it is always present. Handed to the agent as the *input*
+schema, that says "you must send `time_of_day`". `defineTool` passes
+`{ io: "input" }` and re-adds `additionalProperties: false`, which input mode
+drops. `npm run verify:browser` asserts `find_providers` requires only
+`specialty` as seen from the browser.
+
 ## 5. `annotations` are defaulted, not echoed
 
 We register with `{ readOnlyHint: true }`. `getTools()` returns:
@@ -88,7 +98,36 @@ We register with `{ readOnlyHint: true }`. `getTools()` returns:
 Chrome fills in the absent field. Harmless, but worth knowing before writing an
 exact-match assertion on annotations.
 
-## 6. Confirmed as documented
+## 6. `execute` is called with ONE argument — no options, no `signal`
+
+Found in Phase 2, the first time a tool destructured its second parameter.
+
+`webmcp-types` declares `execute(input, { signal })`, and TOOLS.md §3 shows
+`execute: async ({ slot_id }, { signal }) => …`. Chrome 152 calls:
+
+```
+execute(input)            // arguments.length === 1, options === undefined
+```
+
+Measured by registering a diagnostic tool from the probe
+(`npm run verify:browser` prints it as `info  execute() is called with:`).
+
+**Why it matters:** `({ slot_id }, { signal }) =>` throws `TypeError` on the
+destructure before the tool body runs. The browser reports "Tool was executed
+but the invocation failed" for **every** tool, with nothing in the console and
+no `window.onerror`, while the same code passes against any mock that follows
+the typings. This is the most expensive of the findings: it is invisible until
+the real browser, and it looks like WebMCP is broken rather than the tool.
+
+**Handled by:** `defineTool`'s registration wrapper takes `options?` and passes
+`signal` through only when present. Tools never see the browser's options
+object; they receive an `ExecuteContext` the factory builds.
+
+**Consequence for Tier 3:** `watch_earlier_slot` cannot rely on the browser
+supplying an `AbortSignal` in Chrome 152. It will need its own cancellation
+(a tool, or a hold-expiry bound) rather than the documented `signal`.
+
+## 7. Confirmed as documented
 
 - `document.modelContext` exists; `navigator.modelContext` is `undefined`
   (TOOLS.md §2 is correct and current).
