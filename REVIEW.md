@@ -20,6 +20,9 @@ No backend, no database, no auth, no secrets. Client-side only. Fixture data is 
 8. **Missing or non-specific error handling in an `execute`.** Errors must name the offending field and what a valid value looks like so the model can self-correct.
 9. **Unhandled promise rejections. Timers not cleared** on unmount or state transition.
 10. **Any secret, real patient data, real clinic name, real address, real phone number, or real insurance identifier.**
+11. **Any anti-automation measure on the approval path that degrades accessibility** — CAPTCHA, hidden challenge, timing puzzle, "prove you're human". The 1.5 s announced dwell is the only permitted heuristic (spec issue #288 context in `.agent/SPEC_ISSUES.md`).
+12. **A tool returning prose instead of the `ToolResult` envelope**, or throwing for a decision it made (refusal, unavailable, conflict). Refusals fulfil with `ok: false`; only bugs throw (#282).
+13. **Reading `tool.inputSchema` or the `executeTool()` result without the `webmcpInterop.ts` helpers.** Chrome returns both as JSON strings; direct property access silently yields `undefined` (#278).
 
 ## Medium
 
