@@ -96,6 +96,12 @@ const tools = await document.modelContext.getTools();
 // each: { name, title, description, inputSchema, annotations, origin, window }
 ```
 
+**⚠️ Verified against real Chrome (Phase 1, `PHASE1_FINDINGS.md`; matches spec issue #278):**
+
+- **`inputSchema` arrives as a JSON *string*, not an object**, despite `webmcp-types@0.1.6` typing it as an object. Reading `.properties` off it yields `undefined` → the palette renders empty forms with no error. Always go through `readInputSchema()` in `src/lib/webmcpInterop.ts`, which accepts either shape.
+- `annotations` come back **defaulted** (e.g. `untrustedContentHint: false` added), not echoed verbatim. Do not assert deep-equality against what you registered.
+- `executeTool` is **missing from `webmcp-types` entirely** even though Chrome implements it. The declaration merge lives in `src/types/webmcp-augment.d.ts`.
+
 Alphabetically ordered. Returns tools the calling document is authorized to access — by default, same-origin tools registered by this document. **Our command palette calls this**, which is why the human surface is a caller of the same registry rather than a parallel implementation.
 
 Cross-origin retrieval requires `fromOrigins: ['https://partner.org']` **and** the hosting origin having exposed the tool via `exposedTo`. **We do not use cross-origin.** ChatGPT's browser would not discover it anyway.
@@ -106,7 +112,7 @@ Cross-origin retrieval requires `fromOrigins: ['https://partner.org']` **and** t
 const result = await document.modelContext.executeTool(tool, '{"slot_id":"s_1030"}');
 ```
 
-**Arguments are a JSON string, not an object.** Returns the tool result, or `null` when a navigation is triggered. Accepts an optional `{ signal }` for cancellation. This is the palette's execution path.
+**Arguments are a JSON string, not an object** — passing an object fails with `UnknownError: Failed to parse input arguments` (confirmed in Chrome, Phase 1). **The return value is also a JSON string**, not the value `execute` returned; Chrome serialises it. Returns `null` when a navigation is triggered. Accepts an optional `{ signal }` for cancellation. Use `encodeToolArgs()` / `parseToolResult()` from `webmcpInterop.ts` so a future Chrome that changes either shape needs no code change. This is the palette's execution path.
 
 Reference implementation for this pattern: Chrome's **`page-agent`** demo (`GoogleChromeLabs/webmcp-tools/tree/main/demos/page-agent`) retrieves tools and executes them inside a web-based chat interface. Read it before writing Phase 5.
 
@@ -115,6 +121,16 @@ Reference implementation for this pattern: Chrome's **`page-agent`** demo (`Goog
 ```ts
 document.modelContext.addEventListener("toolchange", () => { /* list changed */ });
 ```
+
+### Elicitation — `requestUserInteraction()` (spec issue #165) — **VERIFY**
+
+The spec draft describes a `requestUserInteraction()` for host-mediated user input mid-execution. It is the correct home for grant approval (see `SPEC_ISSUES.md` #288), because the host, not the page, can distinguish the human from the automating agent. **Support in Chrome 152 and in ChatGPT's browser is unverified.** In Phase 6:
+
+```ts
+const canElicit = typeof document.modelContext?.requestUserInteraction === "function";
+```
+
+If present, route the grant through it and keep the page card as fallback. If absent, page card only. Record which you observed, on which surface, in `PHASE1_FINDINGS.md` and the README. Never assume either way.
 
 Fires when the available tool list changes. The palette listens to this so it updates in lockstep with the agent's view — that lockstep is the best beat in the demo video.
 

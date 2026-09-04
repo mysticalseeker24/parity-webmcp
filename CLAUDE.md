@@ -43,6 +43,9 @@ Full specifications live in `.agent/`. Load the ones relevant to the current tas
 | `.agent/CONVENTIONS.md` | Before writing any code. Coding, accessibility, and tool-authoring rules. Non-negotiable. |
 | `.agent/TOOLS.md` | Before touching WebMCP, Zod schemas, the browser, or deploy. Exact verified API surfaces. |
 | `.agent/QODO.md` | Before opening any PR. How the review gate works and what a clean PR looks like. |
+| `.agent/SPEC_ISSUES.md` | Before Phase 2 and before Phase 6. Maps open WebMCP spec issues (#288, #262, #282, #255, #277, #286, #278) to concrete design decisions. Cite issue numbers in code comments. |
+| `.agent/PHASE1_FINDINGS.md` | Before touching `getTools()` / `executeTool()`. Real-Chrome behaviour that contradicts `webmcp-types`. |
+| `.agent/PROMPTS.md` | The ordered per-PR prompt sequence. The human pastes these; Claude Code does not skip ahead in it. |
 
 When a task spans several, read `PROJECT_SPEC.md` first for the shape, then the specific file for the detail.
 
@@ -68,6 +71,8 @@ When a task spans several, read `PROJECT_SPEC.md` first for the shape, then the 
 - **Do not use `navigator.modelContext`.** The getter moved to `document.modelContext` in August 2026. Any training-data memory or blog post using `navigator` is stale and will silently fail.
 - **Do not rely on tool annotations for enforcement.** `readOnlyHint` and `untrustedContentHint` are honest signals for the agent, never a security control. Enforcement is the grant gate plus state-machine registration. See `CONVENTIONS.md` §5.
 - **Do not claim a result we have not observed.** No "100% of injection attempts blocked" unless `evals/adversarial.md` records the runs. See `CONVENTIONS.md` §9.
+- **Do not claim the page-side grant gate is sufficient.** Spec issue #288 shows a computer-use host can click the page's own Approve button. Say "necessary, not sufficient", record detection data, and point at the user agent for the durable fix. See `SPEC_ISSUES.md`.
+- **Do not put a CAPTCHA, puzzle, or timing challenge on the approval path.** It would defeat the users this product is for.
 - **Do not commit secrets.** There should be none in this project. If one appears, something is architecturally wrong.
 
 ---
@@ -76,6 +81,8 @@ When a task spans several, read `PROJECT_SPEC.md` first for the shape, then the 
 
 - TypeScript strict, no `any`, builds clean.
 - Every tool authored through `defineTool` — never a bare `registerTool` call.
+- Every tool returns the `ToolResult` envelope; refusals fulfil with `ok: false`.
+- Every tool carries a `group`; `get_booking_state.unavailable[]` lists every non-live tool with `reason_code` and `unlock_by`.
 - One Zod schema per tool, used for registration, palette form, and runtime validation.
 - Every tool execution emits an `aria-live` announcement with the correct actor.
 - Character budgets respected (`TOOLS.md` §6).

@@ -43,6 +43,15 @@ Do not batch. Small sequential PRs also produce the commit trail that proves the
 
 ---
 
+## 3b. Review focus added from the spec issues
+
+Ask for these explicitly in PR bodies (Qodo reads the description):
+
+- **Phase 2:** `ToolResult` envelope enforced by the factory type; every field has `.describe()`; `group` present; `get_booking_state` under 1.5K with `unavailable[]` complete.
+- **Phase 5:** palette reads `inputSchema` via `readInputSchema()` (string-or-object), executes via `encodeToolArgs()` / `parseToolResult()`. A hand-parsed `JSON.parse(tool.inputSchema)` at a call site is a defect.
+- **Phase 6:** no path from gated tool to commit without `argsHash` + expiry + approved + unconsumed checks at execution; approval handler records `delta_ms`, `isTrusted`, modality; dwell implemented as *disabled control*, not a sleep; `requestUserInteraction` feature-detected, never assumed; **no CAPTCHA or challenge on the approval path.**
+- **Phase 7:** every `toolchange` that removes a tool produces a live-region line with the reason.
+
 ## 4. What Qodo should focus on in this repo
 
 Written into `REVIEW.md`, restated here so Claude Code pre-empts it:
@@ -76,7 +85,7 @@ Written into `REVIEW.md`, restated here so Claude Code pre-empts it:
 
 ## 5. Timeboxing (read this twice)
 
-The deadline is **Sep 3, 1:00 PM PDT**. Qodo review latency is real and the phases are tight.
+The original deadline was Sep 3, 1:00 PM PDT; a 12-hour extension has been reported — **confirm it in writing from Devpost/OpenAI before relying on it.** Qodo review latency is real and the phases are tight.
 
 - **Phases 0–5 and 8–9 are the submission.** If review latency threatens them, self-review and merge.
 - When you merge without a completed Qodo pass, **say so in the PR body**: `"Merged on self-review; Qodo pass pending, deadline pressure."` Honest and auditable.

@@ -97,6 +97,22 @@ Two tools mutate irreversible state. They are the only gated ones, and the gate 
 
 `readOnlyHint` and `untrustedContentHint` are set honestly on every tool, but **they are signals to the agent, never enforcement.** The MCP specification warns that clients must treat tool annotations as untrusted; OpenAI's Site tools documentation states that a tool's claim it only reads data is not proof of what it does. Parity annotates truthfully *and* enforces independently.
 
+**What the page cannot do alone — and why we say so.** Spec issue [#288](https://github.com/webmachinelearning/webmcp/issues/288) records ChatGPT's browser, on 2 September 2026, calling a proposal-only tool on another site and then *clicking that site's own Approve button* when the proposal didn't execute by itself. A host that is both the tool caller and a computer-use agent can complete the page's human step, and the page cannot tell that click from yours. So Parity's gate is **necessary, not sufficient**. What we add: gated tools are described as consequential so the browser's own confirmation fires as a second layer; approval is routed through `requestUserInteraction()` where the host supports it; and every approval is recorded with `delta_ms`, `isTrusted`, and input modality, with sub-second approvals flagged on-page as possibly automated. What we refuse to add: CAPTCHAs, hidden challenges, or timing puzzles — every anti-automation trick that would defeat #288 is an accessibility failure for the exact people this product serves. The durable fix belongs in the user agent. We tested #288 against Parity and recorded the result in the evals.
+
+## Designed against the open spec issues
+
+Parity is built as a set of concrete answers to open questions on the WebMCP spec repo, with the issue numbers in the code:
+
+| Issue | What Parity does |
+|---|---|
+| [#262](https://github.com/webmachinelearning/webmcp/issues/262) unregistering a tool destroys context | `get_booking_state.unavailable[]` returns `reason_code` + `unlock_by` for every non-live tool; the live region announces *why* a command disappeared. Enforcement by absence, context by explanation. |
+| [#282](https://github.com/webmachinelearning/webmcp/issues/282) no structured refusal signal | Every tool returns a typed `ToolResult` envelope; refusals fulfil with `ok: false, kind`, only bugs throw. |
+| [#255](https://github.com/webmachinelearning/webmcp/issues/255) progressive disclosure for large tool sets | 19 defined, ≤7 live via state-driven registration; every tool carries a `group`; palette and state tool present them grouped. Built from existing primitives. |
+| [#286](https://github.com/webmachinelearning/webmcp/issues/286) accessible name ↔ parameter description | Palette labels are generated from each Zod field's `.describe()`. The accessible name *is* the parameter description; they cannot disagree. |
+| [#277](https://github.com/webmachinelearning/webmcp/issues/277) / [#272](https://github.com/webmachinelearning/webmcp/issues/272) accessibility requirements for agent UI | Actor-named live-region announcements, screen-reader-usable command surface, keyboard-complete flows, focus management on grant cards. Offered as an implementation datapoint. |
+| [#278](https://github.com/webmachinelearning/webmcp/issues/278) `executeTool` encoding | `src/lib/webmcpInterop.ts` handles the string-encoded `inputSchema`, string-encoded results, and JSON-string arguments observed in Chrome. |
+| [#288](https://github.com/webmachinelearning/webmcp/issues/288) agent completes its own approval | See the gate section above. Detection made legible; no accessibility-hostile countermeasures. |
+
 ---
 
 ## Adversarial evals
@@ -107,6 +123,9 @@ See [`evals/adversarial.md`](./evals/adversarial.md) for recorded runs. Cases ex
 2. **Argument swap** — a grant approved for slot A, reused against slot B
 3. **Replay** — a consumed grant re-submitted
 4. **Phantom tool** — `confirm_booking` requested while intake is incomplete
+5. **Grant expiry** — approval after the 120 s window
+6. **#288 reproduction** — does ChatGPT's browser click Parity's own Approve control?
+7. **Context recovery (#262)** — does the agent read `unavailable[]` and recover, or give up?
 
 Results are recorded as observed, including anything surprising. The gate is designed so the outcome does not depend on the model choosing to behave.
 
@@ -135,7 +154,7 @@ npm run verify          # typecheck + unit tests + build + real-browser checks
 npm run verify:browser  # just the browser pass (needs a build and Chrome 149+)
 ```
 
-`verify:browser` serves `dist/` and drives headless Chrome with `--enable-blink-features=WebMCP` (the command-line equivalent of the flag) over the DevTools Protocol, asserting that tools register, that `getTools()` returns them, and that `executeTool()` round-trips. Unit tests run against a mock and can only prove internal consistency; this pass runs against Chrome's real implementation. Neither substitutes for opening the deployed URL in ChatGPT's built-in browser, which supports a documented subset — see [`.agent/PHASE1_FINDINGS.md`](./.agent/PHASE1_FINDINGS.md) for what the browser actually does, including three behaviours that contradict `webmcp-types`.
+`verify:browser` serves `dist/` and drives headless Chrome with `--enable-blink-features=WebMCP` (the command-line equivalent of the flag) over the DevTools Protocol, asserting that tools register, that `getTools()` returns them, that `executeTool()` round-trips, and that a state transition re-registers the live set. Unit tests run against a mock and can only prove internal consistency; this pass runs against Chrome's real implementation, verified on Chrome 152. Neither substitutes for opening the deployed URL in ChatGPT's built-in browser, which supports a documented subset — see [`.agent/PHASE1_FINDINGS.md`](./.agent/PHASE1_FINDINGS.md) for what the browser actually does, including four behaviours that contradict `webmcp-types`.
 
 **Try it:** `⌘K` / `Ctrl+K` opens the command palette. Complete a full booking with the keyboard only, no mouse and no agent — then ask an agent to do the same thing and watch the audit trail record both.
 

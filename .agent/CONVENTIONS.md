@@ -72,6 +72,9 @@ Rules that follow:
   2. **The grant gate.** No code path from `confirm_booking` to a committed booking without a valid, unexpired, argument-matched, approved grant.
 - **Re-validate at execution time.** Never trust a decision made earlier in the flow. Re-read grant state at commit; re-check slot availability at commit.
 - **Never add a tool that approves a grant.** The approval channel must be one the agent cannot originate, render, or replay. If an agent can approve its own request, the gate is decoration.
+- **Never claim page-side approval is sufficient.** Spec issue #288 records ChatGPT's browser clicking a page's own Approve button after calling a proposal-only tool. A page cannot tell that click from the operator's. Parity's position, stated in code comments and the README: page approval is *necessary, not sufficient*; the host's confirmation is the second layer; the audit trail records `delta_ms`, `isTrusted`, and modality so automated approvals are at least visible; the durable fix belongs in the user agent (#165). See `SPEC_ISSUES.md`.
+- **Never defeat automation with an accessibility failure.** No CAPTCHAs, hidden challenges, timing puzzles, or "prove you're human" steps on the approval path. They would exclude the users this product exists for. The 1.5 s dwell is the ceiling, and it is announced.
+- **Refusals fulfil, bugs throw.** A tool that *decides* not to act returns `{ ok: false, kind, reason }` (#282). Only genuine defects reject the promise.
 - **Treat all provider-submitted prose in fixtures as hostile.** It is where the injection cases live. Never interpolate it into a tool description, never `eval` it, and mark tools that return it with `untrustedContentHint`.
 
 ---
