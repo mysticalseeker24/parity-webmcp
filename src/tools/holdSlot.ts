@@ -1,75 +1,110 @@
 import * as z from "zod";
 import { findSlot, slotLabel } from "../data/slots";
 import { defineTool } from "../lib/defineTool";
+import { ok, refuse } from "../lib/result";
 import { bookingStore, HOLD_TTL_MS } from "../store";
-import { nextStep } from "./shared";
 
 /**
- * A 10-minute soft hold. Idempotent by slot_id: a second identical call returns
- * the existing hold and never double-holds (PROJECT_SPEC.md §10). Registers only
- * once availability has been fetched at least once, so the agent cannot hold a
- * slot it has not seen.
+ * A 10-minute soft hold. Registers only once availability has been fetched at
+ * least once, so the agent cannot hold a slot it has never seen.
+ *
+ * Idempotent by slot_id: holding the slot you already hold returns the existing
+ * hold rather than creating a second one (PROJECT_SPEC.md §10, "two rapid
+ * identical tool calls"). The expiry timer arrives in Phase 3.
  */
 export const holdSlot = defineTool({
   name: "hold_slot",
   humanLabel: "Hold a slot",
-  description:
-    "Place a 10-minute hold on one appointment slot for the selected provider, by slot id from get_availability. Holding a different slot replaces the current hold. The hold expires on its own; confirm_booking commits it.",
-  schema: z.object({
-    slot_id: z.string().describe('Slot id from get_availability, e.g. "s_p03_2026-10-14_1030".'),
-  }),
-  annotations: { readOnlyHint: false },
+  group: "schedule",
   reversible: true,
+  description:
+    "Place a 10-minute hold on one appointment slot for the selected provider, by slot id from get_availability. Holding a different slot replaces the current hold. Holding the slot you already hold is safe and changes nothing.",
+  schema: z.object({
+    slot_id: z.string().describe("Slot id from get_availability"),
+  }),
+  voiceAliases: ["hold it", "reserve that slot"],
   available: (state) =>
     (state.stage === "provider_selected" && state.hasFetchedAvailability) ||
     state.stage === "slot_held" ||
     state.stage === "intake_complete",
-  voiceAliases: ["hold it", "reserve that slot"],
+  unavailableReason: (state) => {
+    if (state.stage === "booked") {
+      return {
+        reason_code: "already_booked",
+        reason: "The appointment is already booked.",
+        unlock_by: "",
+      };
+    }
+    if (state.stage === "browsing") {
+      return {
+        reason_code: "no_provider",
+        reason: "No provider is selected yet.",
+        unlock_by: "select_provider",
+      };
+    }
+    return {
+      reason_code: "no_availability",
+      reason: "Availability has not been fetched for this provider yet.",
+      unlock_by: "get_availability",
+    };
+  },
   execute: (input, { now }) => {
     const state = bookingStore.getState();
     const slot = findSlot(input.slot_id);
     if (!slot) {
-      return { error: `slot_id "${input.slot_id}" does not exist; use an id from get_availability`, field: "slot_id" };
+      return refuse(
+        "invalid_input",
+        `No slot has id "${input.slot_id}". Use an id from get_availability.`,
+        { field: "slot_id", next: "get_availability" },
+      );
     }
     if (slot.provider_id !== state.selectedProviderId) {
-      return {
-        error: `slot ${slot.id} belongs to provider ${slot.provider_id}, not the selected provider ${state.selectedProviderId ?? "(none)"}`,
-        field: "slot_id",
-      };
+      return refuse(
+        "refused",
+        `That slot belongs to a different provider. Select that provider first, or pick a slot from get_availability.`,
+        { field: "slot_id", next: "get_availability" },
+      );
     }
     if (state.takenSlotIds.includes(slot.id)) {
-      return { error: `slot ${slot.id} is no longer available; call get_availability for current slots`, field: "slot_id" };
+      return refuse("conflict", `That slot has just been taken by someone else.`, {
+        field: "slot_id",
+        next: "get_availability",
+      });
     }
 
-    const existing = state.hold;
-    if (existing && existing.slot_id === slot.id) {
-      return {
-        held: true,
-        already_held: true,
+    const existing = state.heldSlot;
+    if (existing && existing.slotId === slot.id) {
+      return ok(
+        {
+          slot_id: slot.id,
+          date: slot.date,
+          time: slot.time,
+          already_held: true,
+          expires_in_s: Math.max(0, Math.round((existing.expiresAt - now) / 1000)),
+          stage: state.stage,
+        },
+        `${slotLabel(slot)} is already on hold.`,
+      );
+    }
+
+    state.holdSlot({
+      slotId: slot.id,
+      providerId: slot.provider_id,
+      expiresAt: now + HOLD_TTL_MS,
+    });
+
+    return ok(
+      {
         slot_id: slot.id,
-        starts: slotLabel(slot),
-        duration_min: slot.duration_min,
-        expires_in_s: Math.max(0, Math.round((existing.expires_at - now) / 1000)),
-        stage: state.stage,
-        next_step: nextStep(state),
-      };
-    }
-
-    state.holdSlot({ slot_id: slot.id, provider_id: slot.provider_id, expires_at: now + HOLD_TTL_MS });
-    const after = bookingStore.getState();
-    return {
-      held: true,
-      already_held: false,
-      slot_id: slot.id,
-      starts: slotLabel(slot),
-      duration_min: slot.duration_min,
-      expires_in_s: HOLD_TTL_MS / 1000,
-      stage: after.stage,
-      next_step: nextStep(after),
-    };
+        date: slot.date,
+        time: slot.time,
+        already_held: false,
+        expires_in_s: HOLD_TTL_MS / 1000,
+        stage: bookingStore.getState().stage,
+      },
+      `${slotLabel(slot)}, held for 10 minutes.`,
+    );
   },
   announce: (_input, result) =>
-    result.already_held
-      ? `confirmed the existing hold on ${result.starts}.`
-      : `held ${result.starts}, ${result.duration_min} minutes. Hold expires in ten minutes.`,
+    result.ok ? `held ${result.human_summary}` : "could not hold that slot.",
 });

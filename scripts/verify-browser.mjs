@@ -275,14 +275,30 @@ try {
 
   console.log("\nExecution contract");
   check(
-    "executeTool(get_booking_state) reports stage browsing",
-    r.result?.stage === "browsing",
-    JSON.stringify(r.result),
+    "results arrive in the ToolResult envelope (#282)",
+    r.result?.ok === true && typeof r.result?.human_summary === "string",
+    JSON.stringify(r.result).slice(0, 200),
   );
   check(
-    "get_booking_state lists the live tools the browser sees",
-    JSON.stringify(r.result?.live_tools) === JSON.stringify(BROWSING),
-    JSON.stringify(r.result?.live_tools),
+    "executeTool(get_booking_state) reports stage browsing",
+    r.result?.data?.stage === "browsing",
+    JSON.stringify(r.result?.data?.stage),
+  );
+  check(
+    "live[] is grouped by tool group (#255)",
+    JSON.stringify(r.result?.data?.live) ===
+      JSON.stringify({
+        orient: ["get_booking_state", "list_accommodations"],
+        search: ["find_providers", "select_provider"],
+      }),
+    JSON.stringify(r.result?.data?.live),
+  );
+  check(
+    "unavailable[] explains every non-live tool (#262)",
+    Array.isArray(r.result?.data?.unavailable) &&
+      r.result.data.unavailable.length === 4 &&
+      r.result.data.unavailable.every((u) => u.tool && u.reason_code && u.unlock_by),
+    JSON.stringify(r.result?.data?.unavailable?.map((u) => u.reason_code)),
   );
   check(
     "inputSchema arrives as a JSON string (see PHASE1_FINDINGS)",
@@ -305,13 +321,17 @@ try {
   console.log("\nState machine through the browser");
   check(
     "find_providers via executeTool returns 3 neurologists",
-    r.findResult?.total === 3,
-    JSON.stringify(r.findResult ?? r.errors?.find_providers),
+    r.findResult?.data?.total === 3,
+    JSON.stringify(r.findResult?.data?.total ?? r.errors?.find_providers),
   );
   check(
     "select_provider via executeTool moves to provider_selected",
-    r.selectResult?.stage === "provider_selected",
-    JSON.stringify(r.selectResult ?? r.errors?.select_provider),
+    r.selectResult?.data?.stage === "provider_selected",
+    JSON.stringify(r.selectResult?.data?.stage ?? r.errors?.select_provider),
+  );
+  check(
+    "no provider bio reached the agent through the browser",
+    !/SYSTEM NOTE/.test(JSON.stringify(r.findResult ?? {})),
   );
   check(
     "the live set was re-registered after the transition",

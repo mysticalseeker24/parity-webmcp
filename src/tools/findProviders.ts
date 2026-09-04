@@ -2,46 +2,50 @@ import * as z from "zod";
 import { ACCOMMODATION } from "../data/accommodations";
 import { PROVIDERS, SPECIALTY, type Provider } from "../data/providers";
 import { defineTool } from "../lib/defineTool";
+import { ok, refuse } from "../lib/result";
 import { bookingStore, type LastSearch } from "../store";
 import { providerSummary } from "./shared";
 
 const MAX_RESULTS = 5;
 
 /**
- * Multi-constraint provider search. Each constraint is applied in turn and the
- * number it eliminated is recorded, so a zero-result search can say *which*
- * constraint emptied the list rather than "no results" (PROJECT_SPEC.md §10).
+ * Multi-constraint search. Each constraint is applied in turn and the count it
+ * eliminated is recorded, so a zero-result search can name *which* constraint
+ * emptied the list instead of saying "no results" — the store field that
+ * Tier 2's `explain_no_results` reads.
  */
 export const findProviders = defineTool({
   name: "find_providers",
   humanLabel: "Find providers",
+  group: "search",
+  readOnly: true,
   description:
-    "Search specialists by specialty, required accommodations, insurance plan, language and distance. Returns up to 5 matches with the accommodations each offers. When nothing matches, the result names which constraint eliminated the most candidates so you can relax it.",
+    "Search specialists by specialty, required accommodations, insurance plan, language and distance. Returns up to 5 matches, nearest first, with the accommodations each offers. When nothing matches, the result names the constraint that eliminated the most candidates so you can relax it.",
   schema: z.object({
-    specialty: SPECIALTY.describe("Medical specialty required."),
+    specialty: SPECIALTY.describe("Medical specialty needed"),
     accommodations: z
       .array(ACCOMMODATION)
       .default([])
-      .describe("Accommodations the provider must offer. Use ids from list_accommodations."),
-    insurance: z
-      .string()
-      .optional()
-      .describe('Insurance plan name as the patient states it, e.g. "Northstar PPO".'),
-    language: z
-      .string()
-      .optional()
-      .describe('A language the provider must speak, e.g. "Spanish".'),
+      .describe("Accommodations the provider must offer"),
+    insurance: z.string().optional().describe("Insurance plan name, as the patient states it"),
+    language: z.string().optional().describe("A language the provider must speak"),
     radius_km: z
       .number()
       .positive()
       .max(100)
       .optional()
-      .describe("Maximum distance from the patient in kilometres."),
+      .describe("Maximum distance from the patient, in kilometres"),
   }),
-  annotations: { readOnlyHint: true },
-  reversible: false,
-  available: (state) => state.stage === "browsing" || state.stage === "provider_selected",
   voiceAliases: ["find a doctor", "search providers"],
+  available: (state) => state.stage === "browsing" || state.stage === "provider_selected",
+  unavailableReason: (state) => ({
+    reason_code: state.stage === "booked" ? "already_booked" : "hold_active",
+    reason:
+      state.stage === "booked"
+        ? "The appointment is already booked."
+        : "A slot is on hold; searching again would lose it.",
+    unlock_by: state.stage === "booked" ? "" : "release_slot",
+  }),
   execute: (input) => {
     const eliminated: Record<string, number> = {};
     let pool: Provider[] = [...PROVIDERS];
@@ -49,12 +53,15 @@ export const findProviders = defineTool({
     const apply = (constraint: string, keep: (p: Provider) => boolean) => {
       const before = pool.length;
       pool = pool.filter(keep);
-      eliminated[constraint] = before - pool.length;
+      const removed = before - pool.length;
+      if (removed > 0) eliminated[constraint] = removed;
     };
 
     apply("specialty", (p) => p.specialty === input.specialty);
     if (input.accommodations.length > 0) {
-      apply("accommodations", (p) => input.accommodations.every((a) => p.accommodations.includes(a)));
+      apply("accommodations", (p) =>
+        input.accommodations.every((a) => p.accommodations.includes(a)),
+      );
     }
     if (input.insurance) {
       const wanted = input.insurance.trim().toLowerCase();
@@ -84,35 +91,35 @@ export const findProviders = defineTool({
     };
     bookingStore.getState().recordSearch(search);
 
-    let hint: string | undefined;
     if (pool.length === 0) {
-      const [worst] = Object.entries(eliminated)
+      const worst = Object.entries(eliminated)
         .filter(([constraint]) => constraint !== "specialty")
-        .sort(([, a], [, b]) => b - a);
-      hint = worst && worst[1] > 0
-        ? `The "${worst[0]}" constraint eliminated ${worst[1]} candidate${worst[1] === 1 ? "" : "s"}; relax it and search again.`
-        : `No providers offer ${input.specialty.replace("_", " ")}.`;
+        .sort(([, a], [, b]) => b - a)[0];
+      return refuse(
+        "unavailable",
+        worst
+          ? `No ${input.specialty} provider matches. The "${worst[0]}" constraint eliminated ${worst[1]} of them; relax it and search again.`
+          : `No provider offers ${input.specialty}.`,
+        { next: "find_providers" },
+      );
     }
 
-    return {
-      showing: shown.length,
-      total: pool.length,
-      providers: shown.map(providerSummary),
-      eliminated_by: eliminated,
-      ...(pool.length > MAX_RESULTS
-        ? { note: `Showing ${MAX_RESULTS} of ${pool.length}; add a constraint to narrow the search.` }
-        : {}),
-      ...(hint !== undefined ? { hint } : {}),
-      next_step:
-        shown.length > 0
-          ? "Call select_provider with the provider_id the patient chooses."
-          : "Relax a constraint and call find_providers again.",
-    };
+    return ok(
+      {
+        showing: shown.length,
+        total: pool.length,
+        providers: shown.map(providerSummary),
+        ...(pool.length > MAX_RESULTS
+          ? { note: `showing ${shown.length} of ${pool.length}; narrow the search` }
+          : {}),
+      },
+      pool.length > MAX_RESULTS
+        ? `Showing ${shown.length} of ${pool.length} ${input.specialty} providers.`
+        : `${pool.length} ${input.specialty} provider${pool.length === 1 ? "" : "s"}.`,
+    );
   },
   announce: (input, result) =>
-    result.total === 0
-      ? `found no ${input.specialty.replace("_", " ")} providers. ${result.hint ?? ""}`.trim()
-      : `found ${result.total} ${input.specialty.replace("_", " ")} provider${result.total === 1 ? "" : "s"}${
-          input.accommodations.length ? ` offering ${input.accommodations.length} required accommodation${input.accommodations.length === 1 ? "" : "s"}` : ""
-        }.`,
+    result.ok
+      ? `found ${result.human_summary.toLowerCase()}`
+      : `found no ${input.specialty} providers.`,
 });

@@ -2,8 +2,8 @@ import { PROVIDERS, type Provider } from "./providers";
 
 /**
  * Appointment slots, generated deterministically from a seed over a fixed
- * 14-day window (TOOLS.md §10). Fixed dates rather than "today + n" so the demo
- * can be re-shot on any day and every slot id in the video still exists.
+ * 14-day window (TOOLS.md §10). Fixed dates rather than "today + n" so the
+ * video can be re-shot on any day and every slot id in it still exists.
  *
  * Dates and times are plain strings. There is no time zone in this fixture and
  * introducing `Date` arithmetic would only invent one.
@@ -38,15 +38,15 @@ function seededRandom(seed: number): () => number {
 
 const DAY_MS = 86_400_000;
 
-/** Every date in the window, as YYYY-MM-DD, weekends excluded. */
+/** Every weekday in the window, as YYYY-MM-DD. */
 export const SCHEDULE_DATES: readonly string[] = (() => {
   const start = Date.UTC(2026, 9, 5); // must agree with SCHEDULE_START
   const dates: string[] = [];
   for (let i = 0; i < SCHEDULE_DAYS; i++) {
-    const d = new Date(start + i * DAY_MS);
-    const weekday = d.getUTCDay();
+    const day = new Date(start + i * DAY_MS);
+    const weekday = day.getUTCDay();
     if (weekday === 0 || weekday === 6) continue;
-    dates.push(d.toISOString().slice(0, 10));
+    dates.push(day.toISOString().slice(0, 10));
   }
   return dates;
 })();
@@ -81,7 +81,13 @@ function generateForProvider(provider: Provider, index: number): Slot[] {
       const extended = offersExtended && rng() < 0.3;
       const duration: SlotDuration = extended ? 60 : 30;
       if (extended) skipNext = true;
-      slots.push({ id: slotId(provider.id, date, time), provider_id: provider.id, date, time, duration_min: duration });
+      slots.push({
+        id: slotId(provider.id, date, time),
+        provider_id: provider.id,
+        date,
+        time,
+        duration_min: duration,
+      });
     }
   }
   return slots;
@@ -105,7 +111,7 @@ const MONTHS = [
 ];
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-/** "Tuesday 14 October, 10:30" — for announcements, never for tool output. */
+/** "Tuesday 14 October, 10:30" — for humans; tool output uses the raw fields. */
 export function slotLabel(slot: Pick<Slot, "date" | "time">): string {
   const [y, m, d] = slot.date.split("-").map(Number);
   if (y === undefined || m === undefined || d === undefined) return `${slot.date}, ${slot.time}`;
@@ -117,9 +123,9 @@ const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** True only for a real calendar date in YYYY-MM-DD form. */
 export function isRealDate(value: string): boolean {
-  const m = DATE_RE.exec(value);
-  if (!m) return false;
-  const [, y, mo, d] = m.map(Number);
+  const match = DATE_RE.exec(value);
+  if (!match) return false;
+  const [, y, mo, d] = match.map(Number);
   if (y === undefined || mo === undefined || d === undefined) return false;
   const date = new Date(Date.UTC(y, mo - 1, d));
   return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;

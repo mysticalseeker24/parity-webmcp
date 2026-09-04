@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`slots fixture > is deterministic — the same ids on every generation 1`] = `
+exports[`slots fixture > is deterministic — identical ids on every generation 1`] = `
 {
   "count": 741,
   "first": [

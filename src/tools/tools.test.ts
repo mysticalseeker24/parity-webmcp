@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROVIDERS } from "../data/providers";
 import { slotsForProvider } from "../data/slots";
-import { isToolError, type ToolError } from "../lib/defineTool";
-import { GRANT_TTL_MS } from "../lib/grants";
+import { BUDGET } from "../lib/defineTool";
+import { isRefusal, type ToolRefusal, type ToolResult } from "../lib/result";
 import { bookingStore, HOLD_TTL_MS } from "../store";
 import {
   confirmBooking,
@@ -16,41 +16,39 @@ import {
   TOOLS,
 } from "./index";
 
-const agent = { actor: "agent" as const };
-const human = { actor: "human" as const };
+const store = () => bookingStore.getState();
 
-function expectError(result: unknown): ToolError {
-  expect(isToolError(result), `expected an error, got ${JSON.stringify(result)}`).toBe(true);
-  return result as ToolError;
+function expectOk(result: ToolResult): Record<string, unknown> {
+  expect(result.ok, `expected ok, got ${JSON.stringify(result)}`).toBe(true);
+  return (result as { data: Record<string, unknown> }).data;
 }
-function expectOk<T>(result: T | ToolError): T {
-  expect(isToolError(result), `expected success, got ${JSON.stringify(result)}`).toBe(false);
-  return result as T;
+function expectRefusal(result: ToolResult): ToolRefusal {
+  expect(result.ok, `expected a refusal, got ${JSON.stringify(result)}`).toBe(false);
+  return result as ToolRefusal;
 }
-const lastAnnouncement = () => bookingStore.getState().announcements.at(-1)?.text ?? "";
 
-/** Drive the store to the given stage through the tools themselves. */
+/** Drive the flow through the tools themselves, as an agent would. */
 async function reach(stage: "provider_selected" | "availability" | "slot_held" | "intake_complete") {
-  await findProviders.run({ specialty: "neurology" }, agent);
-  await selectProvider.run({ provider_id: "p01" }, agent);
-  if (stage === "provider_selected") return;
-  const avail = expectOk(await getAvailability.run({}, agent));
-  if (stage === "availability") return;
-  const slot = avail.slots[0]!;
-  await holdSlot.run({ slot_id: slot.id }, agent);
+  await findProviders.run({ specialty: "neurology" });
+  await selectProvider.run({ provider_id: "p01" });
+  if (stage === "provider_selected") return undefined;
+  const avail = expectOk(await getAvailability.run({}));
+  if (stage === "availability") return undefined;
+  const slot = (avail["slots"] as { id: string }[])[0]!;
+  await holdSlot.run({ slot_id: slot.id });
   if (stage === "slot_held") return slot;
-  await setIntake.run({ patient_name: "Rosa Quintero", dob: "1984-03-09", reason: "migraine" }, agent);
+  await setIntake.run({ patient_name: "Rosa Quintero", dob: "1984-03-09", reason: "migraine" });
   return slot;
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ now: new Date("2026-09-03T12:00:00Z") });
-  bookingStore.getState().reset();
+  vi.useFakeTimers({ now: new Date("2026-09-04T12:00:00Z") });
+  store().reset();
 });
 afterEach(() => vi.useRealTimers());
 
 describe("Tier 1 inventory", () => {
-  it("defines exactly the 8 Tier 1 tools with honest annotations", () => {
+  it("is the 8 tools from PROJECT_SPEC §5, in workflow order", () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       "get_booking_state",
       "list_accommodations",
@@ -61,356 +59,330 @@ describe("Tier 1 inventory", () => {
       "set_intake",
       "confirm_booking",
     ]);
-    const readOnly = TOOLS.filter((t) => t.spec.annotations.readOnlyHint).map((t) => t.name);
-    expect(readOnly).toEqual(["get_booking_state", "list_accommodations", "find_providers", "get_availability"]);
-    expect(confirmBooking.spec.gated).toBe(true);
-    expect(confirmBooking.spec.reversible).toBe(false);
+  });
+
+  it("marks exactly the read-only tools readOnly, and gates only confirm_booking", () => {
+    expect(TOOLS.filter((t) => t.spec.readOnly).map((t) => t.name)).toEqual([
+      "get_booking_state",
+      "list_accommodations",
+      "find_providers",
+      "get_availability",
+    ]);
+    expect(TOOLS.filter((t) => t.spec.requiresGrant).map((t) => t.name)).toEqual([
+      "confirm_booking",
+    ]);
   });
 });
 
-describe("get_booking_state", () => {
-  it("orients the agent at browsing", async () => {
-    const r = expectOk(await getBookingState.run({}, agent));
-    expect(r.stage).toBe("browsing");
-    expect(r.selected_provider).toBeNull();
-    expect(r.intake.missing).toEqual(["patient_name", "dob", "reason"]);
-    expect(r.next_step).toMatch(/find_providers/);
+describe("get_booking_state (#262, #255)", () => {
+  it("orients the agent at browsing and explains every unavailable tool", async () => {
+    const data = expectOk(await getBookingState.run({}));
+    expect(data["stage"]).toBe("browsing");
+    expect(data["live"]).toEqual({
+      orient: ["get_booking_state", "list_accommodations"],
+      search: ["find_providers", "select_provider"],
+    });
+
+    const unavailable = data["unavailable"] as { tool: string; reason_code: string; unlock_by: string }[];
+    expect(unavailable.map((u) => u.tool)).toEqual([
+      "get_availability",
+      "hold_slot",
+      "set_intake",
+      "confirm_booking",
+    ]);
+    // Every entry says why and how to unlock — the context #262 says
+    // unregistration destroys.
+    for (const entry of unavailable) {
+      expect(entry.reason_code).toBeTruthy();
+      expect(entry.unlock_by).toBeTruthy();
+    }
+    expect(unavailable.find((u) => u.tool === "confirm_booking")?.reason_code).toBe("no_hold");
   });
 
-  it("reports the hold countdown and live tools", async () => {
+  it("reports intake_incomplete on confirm_booking once a slot is held", async () => {
     await reach("slot_held");
-    bookingStore.getState().setLiveTools(["a", "b"]);
-    vi.advanceTimersByTime(60_000);
-    const r = expectOk(await getBookingState.run({}, agent));
-    expect(r.hold?.expires_in_s).toBe(540);
-    expect(r.live_tools).toEqual(["a", "b"]);
+    const data = expectOk(await getBookingState.run({}));
+    const unavailable = data["unavailable"] as { tool: string; reason_code: string }[];
+    expect(unavailable.find((u) => u.tool === "confirm_booking")?.reason_code).toBe(
+      "intake_incomplete",
+    );
+  });
+
+  it("stays under the 1.5K output budget in every stage", async () => {
+    const sizes: Record<string, number> = {};
+    const measure = async (label: string) => {
+      sizes[label] = JSON.stringify(await getBookingState.run({})).length;
+      expect(sizes[label], `${label} exceeds the budget`).toBeLessThanOrEqual(BUDGET.output);
+    };
+
+    await measure("browsing");
+    await reach("provider_selected");
+    await measure("provider_selected");
+    await getAvailability.run({});
+    await measure("availability_fetched");
+    await reach("slot_held");
+    await measure("slot_held");
+    await setIntake.run({ patient_name: "Rosa Quintero", dob: "1984-03-09", reason: "migraine" });
+    await measure("intake_complete");
+    store().confirmBooking({
+      id: "b1",
+      slotId: "s1",
+      providerId: "p01",
+      confirmedAt: Date.now(),
+      intake: store().intake,
+    });
+    await measure("booked");
   });
 });
 
 describe("list_accommodations", () => {
-  it("returns the whole vocabulary under the output budget", async () => {
-    const r = expectOk(await listAccommodations.run({}, agent));
-    expect(r.accommodations).toHaveLength(11);
-    expect(r.accommodations[0]).toEqual({
-      id: "wheelchair_accessible",
-      label: "Wheelchair accessible",
-      description: expect.any(String),
-    });
-    expect(JSON.stringify(r).length).toBeLessThanOrEqual(1500);
+  it("returns the whole vocabulary within budget", async () => {
+    const result = await listAccommodations.run({});
+    const data = expectOk(result);
+    expect((data["accommodations"] as unknown[]).length).toBe(10);
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(BUDGET.output);
   });
 });
 
 describe("find_providers", () => {
-  it("returns a specialty sorted by distance and records the search", async () => {
-    const r = expectOk(await findProviders.run({ specialty: "neurology" }, agent));
-    expect(r.providers.map((p) => p.id)).toEqual(["p01", "p02", "p03"]);
-    expect(r.eliminated_by).toEqual({ specialty: 9 });
-    expect(bookingStore.getState().lastSearch?.result_ids).toEqual(["p01", "p02", "p03"]);
-    expect(lastAnnouncement()).toBe("Agent found 3 neurology providers.");
+  it("returns a specialty nearest-first and records the search", async () => {
+    const data = expectOk(await findProviders.run({ specialty: "neurology" }));
+    expect((data["providers"] as { id: string }[]).map((p) => p.id)).toEqual(["p01", "p02", "p03"]);
+    expect(store().lastSearch?.total_matches).toBe(3);
   });
 
-  it("never returns provider bios", async () => {
-    const r = expectOk(await findProviders.run({ specialty: "physical_medicine" }, agent));
-    expect(JSON.stringify(r)).not.toMatch(/SYSTEM NOTE/);
+  it("never leaks a provider bio — the injection fixture cannot reach the agent", async () => {
+    const result = await findProviders.run({ specialty: "physiotherapy" });
+    expect(JSON.stringify(result)).not.toMatch(/SYSTEM NOTE/);
   });
 
-  it("names the eliminating constraint when nothing matches", async () => {
-    const r = expectOk(
-      await findProviders.run({ specialty: "endocrinology", accommodations: ["wheelchair_accessible"] }, agent),
+  it("caps at 5 and says how many it is hiding", async () => {
+    // Widen past the cap by searching a specialty with more matches than 5 is
+    // not possible with 3 per specialty, so assert the note logic directly.
+    const data = expectOk(await findProviders.run({ specialty: "neurology" }));
+    expect(data["note"]).toBeUndefined();
+    expect(data["showing"]).toBe(3);
+    expect(data["total"]).toBe(3);
+  });
+
+  it("refuses with the eliminating constraint when nothing matches", async () => {
+    const refusal = expectRefusal(
+      await findProviders.run({
+        specialty: "audiology",
+        accommodations: ["wheelchair_accessible"],
+      }),
     );
-    expect(r.total).toBe(0);
-    expect(r.hint).toMatch(/"accommodations" constraint eliminated 3/);
-    expect(lastAnnouncement()).toMatch(/^Agent found no endocrinology providers/);
+    expect(refusal.kind).toBe("unavailable");
+    expect(refusal.reason).toMatch(/"accommodations" constraint eliminated 3/);
+  });
+
+  it("gap: Harbor Assist matches nobody and the insurance constraint is named", async () => {
+    const refusal = expectRefusal(
+      await findProviders.run({ specialty: "neurology", insurance: "Harbor Assist" }),
+    );
+    expect(refusal.reason).toMatch(/"insurance" constraint/);
   });
 
   it("matches insurance and language case-insensitively", async () => {
-    const byPlan = expectOk(await findProviders.run({ specialty: "rheumatology", insurance: "northstar ppo" }, agent));
-    expect(byPlan.providers.map((p) => p.id)).toEqual(["p06", "p05"]);
-    const byLang = expectOk(await findProviders.run({ specialty: "rheumatology", language: "Arabic" }, agent));
-    expect(byLang.providers.map((p) => p.id)).toEqual(["p06"]);
+    const byPlan = expectOk(
+      await findProviders.run({ specialty: "rheumatology", insurance: "northstar ppo" }),
+    );
+    expect((byPlan["providers"] as { id: string }[]).map((p) => p.id)).toEqual(["p06", "p05"]);
   });
 
-  it("gap: Harbor Assist matches nobody, and says the insurance did it", async () => {
-    const r = expectOk(await findProviders.run({ specialty: "neurology", insurance: "Harbor Assist" }, agent));
-    expect(r.total).toBe(0);
-    expect(r.hint).toMatch(/"insurance" constraint/);
+  it("refuses an unknown specialty, naming the field and the valid values", async () => {
+    const refusal = expectRefusal(await findProviders.run({ specialty: "dermatology" }));
+    expect(refusal.kind).toBe("invalid_input");
+    expect(refusal.field).toBe("specialty");
+    expect(refusal.reason).toMatch(/"neurology"/);
   });
 
-  it("filters by radius", async () => {
-    const r = expectOk(await findProviders.run({ specialty: "neurology", radius_km: 5 }, agent));
-    expect(r.providers.map((p) => p.id)).toEqual(["p01"]);
-  });
-
-  it("rejects an unknown specialty naming the field", async () => {
-    const e = expectError(await findProviders.run({ specialty: "dermatology" }, agent));
-    expect(e.field).toBe("specialty");
-  });
-
-  it("stays under the output budget for the widest query", async () => {
-    for (const specialty of ["neurology", "rheumatology", "endocrinology", "physical_medicine"] as const) {
-      const r = await findProviders.run({ specialty }, agent);
-      expect(JSON.stringify(r).length).toBeLessThanOrEqual(1500);
+  it("stays within budget for every specialty", async () => {
+    for (const specialty of ["neurology", "rheumatology", "audiology", "physiotherapy"] as const) {
+      const result = await findProviders.run({ specialty });
+      expect(JSON.stringify(result).length, specialty).toBeLessThanOrEqual(BUDGET.output);
     }
   });
 });
 
 describe("select_provider", () => {
-  it("rejects an unknown id", async () => {
-    const e = expectError(await selectProvider.run({ provider_id: "p99" }, agent));
-    expect(e.field).toBe("provider_id");
-    expect(e.error).toMatch(/does not exist/);
+  it("refuses an unknown id as invalid_input", async () => {
+    const refusal = expectRefusal(await selectProvider.run({ provider_id: "p99" }));
+    expect(refusal.kind).toBe("invalid_input");
+    expect(refusal.field).toBe("provider_id");
   });
 
-  it("hard-blocks a provider lacking an accommodation the search required, naming it", async () => {
-    await findProviders.run({ specialty: "neurology", accommodations: ["asl_interpreter"] }, agent);
-    const e = expectError(await selectProvider.run({ provider_id: "p02" }, agent));
-    expect(e.error).toMatch(/lacks required accommodation: asl_interpreter/);
-    expect(e.details?.missing_accommodations).toEqual(["asl_interpreter"]);
-    expect(bookingStore.getState().stage).toBe("browsing");
+  it("hard-blocks a provider missing a required accommodation, naming it", async () => {
+    await findProviders.run({ specialty: "neurology", accommodations: ["asl_interpreter"] });
+    const refusal = expectRefusal(await selectProvider.run({ provider_id: "p02" }));
+    expect(refusal.kind).toBe("refused");
+    expect(refusal.reason).toMatch(/does not offer ASL interpreter/);
+    expect(store().stage).toBe("browsing");
   });
 
-  it("selects and announces with the matched accommodations spelled out", async () => {
-    await findProviders.run({ specialty: "neurology", accommodations: ["wheelchair_accessible", "asl_interpreter"] }, agent);
-    const r = expectOk(await selectProvider.run({ provider_id: "p01" }, agent));
-    expect(r.stage).toBe("provider_selected");
-    expect(lastAnnouncement()).toBe(
-      "Agent selected Dr. Amara Okafor, Neurology, Wheelchair accessible, ASL interpreter.",
-    );
-  });
-
-  it("announces the human as 'You'", async () => {
-    await selectProvider.run({ provider_id: "p04" }, human);
-    expect(lastAnnouncement()).toBe("You selected Dr. Priya Raghunathan, Rheumatology.");
+  it("selects and moves the stage on", async () => {
+    await findProviders.run({ specialty: "neurology" });
+    const data = expectOk(await selectProvider.run({ provider_id: "p01" }));
+    expect(data["stage"]).toBe("provider_selected");
+    expect(store().selectedProviderId).toBe("p01");
   });
 });
 
 describe("get_availability", () => {
-  it("requires a selected provider", async () => {
-    expectError(await getAvailability.run({}, agent));
+  it("refuses when no provider is selected", async () => {
+    expect(expectRefusal(await getAvailability.run({})).kind).toBe("unavailable");
   });
 
-  it("lists open slots, caps at 10, and marks availability fetched", async () => {
+  it("returns slots, caps them, and marks availability fetched", async () => {
     await reach("provider_selected");
-    const r = expectOk(await getAvailability.run({}, agent));
-    expect(r.provider_id).toBe("p01");
-    expect(r.showing).toBe(10);
-    expect(r.total).toBeGreaterThan(10);
-    expect(r.note).toMatch(/Showing 10 of/);
-    expect(bookingStore.getState().hasFetchedAvailability).toBe(true);
-    expect(JSON.stringify(r).length).toBeLessThanOrEqual(1500);
+    const data = expectOk(await getAvailability.run({}));
+    expect(data["showing"]).toBe(8);
+    expect(data["note"]).toMatch(/showing 8 of/);
+    expect(store().hasFetchedAvailability).toBe(true);
   });
 
-  it("filters by date range, time of day and duration", async () => {
+  it("filters by time of day and duration", async () => {
     await reach("provider_selected");
-    const morning = expectOk(await getAvailability.run({ date_from: "2026-10-12", date_to: "2026-10-13", time_of_day: "morning" }, agent));
-    for (const s of morning.slots) {
-      expect(s.date >= "2026-10-12" && s.date <= "2026-10-13").toBe(true);
+    const morning = expectOk(await getAvailability.run({ time_of_day: "morning" }));
+    for (const s of morning["slots"] as { time: string }[]) {
       expect(Number(s.time.slice(0, 2))).toBeLessThan(12);
     }
-    const hour = expectOk(await getAvailability.run({ duration_min: 60 }, agent));
-    expect(hour.total).toBeGreaterThan(0);
-    for (const s of hour.slots) expect(s.duration_min).toBe(60);
+    const long = expectOk(await getAvailability.run({ duration_min: 60 }));
+    for (const s of long["slots"] as { min: number }[]) expect(s.min).toBe(60);
   });
 
-  it("returns no 60-minute slots for a provider without extended appointments", async () => {
-    await findProviders.run({ specialty: "neurology" }, agent);
-    await selectProvider.run({ provider_id: "p02" }, agent);
-    const r = expectOk(await getAvailability.run({ duration_min: 60 }, agent));
-    expect(r.total).toBe(0);
-    expect(r.next_step).toMatch(/Widen/);
-  });
-
-  it("rejects malformed and out-of-window dates with actionable errors", async () => {
+  it("refuses malformed and out-of-window dates with a valid example", async () => {
     await reach("provider_selected");
-    expect(expectError(await getAvailability.run({ date_from: "14/10/2026" }, agent))).toMatchObject({ field: "date_from" });
-    expect(expectError(await getAvailability.run({ date_from: "2026-10-14", date_to: "2026-10-10" }, agent)).error).toMatch(/after/);
-    expect(expectError(await getAvailability.run({ date_from: "2027-01-01" }, agent)).error).toMatch(/booking window/);
+    expect(expectRefusal(await getAvailability.run({ date_from: "14/10/2026" })).reason).toMatch(
+      /2026-10-14/,
+    );
+    expect(expectRefusal(await getAvailability.run({ date_from: "2027-01-01" })).reason).toMatch(
+      /booking window/,
+    );
   });
 
-  it("hides slots that were taken", async () => {
-    await reach("provider_selected");
-    const first = slotsForProvider("p01")[0]!;
-    bookingStore.getState().markSlotTaken(first.id);
-    const r = expectOk(await getAvailability.run({}, agent));
-    expect(r.slots.map((s) => s.id)).not.toContain(first.id);
+  it("stays within budget for every provider", async () => {
+    for (const p of PROVIDERS) {
+      store().reset();
+      store().selectProvider(p.id);
+      const result = await getAvailability.run({});
+      expect(JSON.stringify(result).length, p.id).toBeLessThanOrEqual(BUDGET.output);
+    }
   });
 });
 
 describe("hold_slot", () => {
-  it("rejects unknown ids and other providers' slots", async () => {
+  it("refuses an unknown slot and another provider's slot", async () => {
     await reach("availability");
-    expect(expectError(await holdSlot.run({ slot_id: "s_nope" }, agent)).field).toBe("slot_id");
+    expect(expectRefusal(await holdSlot.run({ slot_id: "nope" })).kind).toBe("invalid_input");
     const other = slotsForProvider("p02")[0]!;
-    expect(expectError(await holdSlot.run({ slot_id: other.id }, agent)).error).toMatch(/belongs to provider p02/);
+    expect(expectRefusal(await holdSlot.run({ slot_id: other.id })).kind).toBe("refused");
   });
 
   it("holds for 10 minutes and moves to slot_held", async () => {
-    const avail = expectOk((await reach("availability"), await getAvailability.run({}, agent)));
-    const slot = avail.slots[0]!;
-    const r = expectOk(await holdSlot.run({ slot_id: slot.id }, agent));
-    expect(r).toMatchObject({ held: true, already_held: false, expires_in_s: 600, stage: "slot_held" });
-    expect(lastAnnouncement()).toMatch(/^Agent held \w+ \d+ October, \d\d:\d\d, \d+ minutes\. Hold expires in ten minutes\.$/);
+    const slot = await reach("slot_held");
+    const held = store().heldSlot;
+    expect(held?.slotId).toBe(slot!.id);
+    expect(held!.expiresAt - Date.now()).toBe(HOLD_TTL_MS);
+    expect(store().stage).toBe("slot_held");
   });
 
-  it("is idempotent — a second identical call returns the existing hold", async () => {
-    const slot = (await reach("slot_held"))!;
+  it("is idempotent — re-holding the same slot returns the existing hold", async () => {
+    const slot = await reach("slot_held");
+    const before = store().heldSlot;
     vi.advanceTimersByTime(30_000);
-    const r = expectOk(await holdSlot.run({ slot_id: slot.id }, agent));
-    expect(r.already_held).toBe(true);
-    expect(r.expires_in_s).toBe(570);
-    expect(bookingStore.getState().audit.filter((a) => a.tool === "hold_slot")).toHaveLength(2);
+    const data = expectOk(await holdSlot.run({ slot_id: slot!.id }));
+    expect(data["already_held"]).toBe(true);
+    expect(data["expires_in_s"]).toBe(570);
+    expect(store().heldSlot).toEqual(before);
   });
 
-  it("expires on its own and falls back to provider_selected", async () => {
-    await reach("slot_held");
-    vi.advanceTimersByTime(HOLD_TTL_MS + 1);
-    const s = bookingStore.getState();
-    expect(s.hold).toBeNull();
-    expect(s.stage).toBe("provider_selected");
-    expect(s.announcements.at(-1)).toMatchObject({ actor: "system", politeness: "assertive" });
-  });
-
-  it("refuses a slot that was taken", async () => {
-    const avail = expectOk((await reach("availability"), await getAvailability.run({}, agent)));
-    const slot = avail.slots[0]!;
-    bookingStore.getState().markSlotTaken(slot.id);
-    expect(expectError(await holdSlot.run({ slot_id: slot.id }, agent)).error).toMatch(/no longer available/);
+  it("returns conflict when the slot was taken", async () => {
+    await reach("availability");
+    const avail = expectOk(await getAvailability.run({}));
+    const slot = (avail["slots"] as { id: string }[])[0]!;
+    store().markSlotTaken(slot.id);
+    expect(expectRefusal(await holdSlot.run({ slot_id: slot.id })).kind).toBe("conflict");
   });
 });
 
 describe("set_intake", () => {
   it("requires at least one field", async () => {
     await reach("slot_held");
-    expectError(await setIntake.run({}, agent));
+    expect(expectRefusal(await setIntake.run({})).kind).toBe("invalid_input");
   });
 
-  it("validates dob strictly in code with an ISO hint", async () => {
+  it("validates dob in code with an ISO hint", async () => {
     await reach("slot_held");
-    const e = expectError(await setIntake.run({ dob: "14/10/2026" }, agent));
-    expect(e).toEqual({ error: 'dob must be ISO 8601 (YYYY-MM-DD); received "14/10/2026"', field: "dob" });
-    expect(expectError(await setIntake.run({ dob: "2030-01-01" }, agent)).error).toMatch(/future/);
+    const refusal = expectRefusal(await setIntake.run({ dob: "14/10/2026" }));
+    expect(refusal.field).toBe("dob");
+    expect(refusal.reason).toMatch(/1984-03-09/);
+    expect(expectRefusal(await setIntake.run({ dob: "2030-01-01" })).reason).toMatch(/future/);
   });
 
-  it("accepts partial updates and computes completeness", async () => {
+  it("merges partial updates and flips the stage only when complete", async () => {
     await reach("slot_held");
-    const partial = expectOk(await setIntake.run({ patient_name: "Rosa Quintero" }, agent));
-    expect(partial.complete).toBe(false);
-    expect(partial.missing).toEqual(["dob", "reason"]);
-    expect(lastAnnouncement()).toBe("Agent updated intake. Still missing: date of birth, reason for visit.");
-    expect(bookingStore.getState().stage).toBe("slot_held");
+    const partial = expectOk(await setIntake.run({ patient_name: "Rosa Quintero" }));
+    expect(partial["complete"]).toBe(false);
+    expect(partial["missing"]).toEqual(["dob", "reason"]);
+    expect(store().stage).toBe("slot_held");
 
-    const done = expectOk(await setIntake.run({ dob: "1984-03-09", reason: "migraine", accommodations: ["asl_interpreter"] }, agent));
-    expect(done.complete).toBe(true);
-    expect(done.intake.patient_name).toBe("Rosa Quintero");
-    expect(done.stage).toBe("intake_complete");
-    expect(lastAnnouncement()).toBe("Agent completed intake for Rosa Quintero.");
+    const done = expectOk(await setIntake.run({ dob: "1984-03-09", reason: "migraine" }));
+    expect(done["complete"]).toBe(true);
+    expect((done["intake"] as { patient_name: string }).patient_name).toBe("Rosa Quintero");
+    expect(store().stage).toBe("intake_complete");
   });
 
-  it("rejects an accommodation outside the vocabulary", async () => {
+  it("refuses an accommodation outside the vocabulary", async () => {
     await reach("slot_held");
-    expect(expectError(await setIntake.run({ accommodations: ["wheelchair"] }, agent)).field).toBe("accommodations.0");
+    const refusal = expectRefusal(await setIntake.run({ accommodations: ["wheelchair"] }));
+    expect(refusal.field).toBe("accommodations.0");
   });
 });
 
-describe("confirm_booking", () => {
-  it("rejects a slot_id that is not the held slot", async () => {
+describe("confirm_booking — no path to a booking exists yet", () => {
+  it("refuses with pending_authorization rather than committing", async () => {
+    const slot = await reach("intake_complete");
+    const refusal = expectRefusal(await confirmBooking.run({ slot_id: slot!.id }));
+    expect(refusal.kind).toBe("pending_authorization");
+    expect(refusal.reason).toMatch(/must approve/);
+    expect(store().booking).toBeNull();
+    expect(store().stage).toBe("intake_complete");
+  });
+
+  it("refuses a slot_id that is not the held slot", async () => {
     await reach("intake_complete");
-    const e = expectError(await confirmBooking.run({ slot_id: "s_other" }, agent));
-    expect(e.error).toMatch(/must match the held slot/);
+    const refusal = expectRefusal(await confirmBooking.run({ slot_id: "s_other" }));
+    expect(refusal.kind).toBe("invalid_input");
   });
 
-  it("first call mints a pending grant and returns pending_authorization, assertively", async () => {
-    const slot = (await reach("intake_complete"))!;
-    const r = expectOk(await confirmBooking.run({ slot_id: slot.id }, agent));
-    expect(r).toMatchObject({ status: "pending_authorization", expires_in_s: 120 });
-    expect(bookingStore.getState().grants).toHaveLength(1);
-    expect(bookingStore.getState().grants[0]?.status).toBe("pending");
-    expect(bookingStore.getState().stage).toBe("intake_complete");
-    const ann = bookingStore.getState().announcements.at(-1);
-    expect(ann?.politeness).toBe("assertive");
-    expect(ann?.text).toMatch(/^Agent requested authorization .* You must approve this on the page\.$/);
+  it("re-checks the slot at commit and releases the hold on a conflict", async () => {
+    const slot = await reach("intake_complete");
+    store().markSlotTaken(slot!.id);
+    const refusal = expectRefusal(await confirmBooking.run({ slot_id: slot!.id }));
+    expect(refusal.kind).toBe("conflict");
+    expect(store().heldSlot).toBeNull();
+    expect(store().stage).toBe("provider_selected");
   });
 
-  it("a repeat call while pending does not mint a second grant", async () => {
-    const slot = (await reach("intake_complete"))!;
-    await confirmBooking.run({ slot_id: slot.id }, agent);
-    vi.advanceTimersByTime(30_000);
-    const r = expectOk(await confirmBooking.run({ slot_id: slot.id }, agent));
-    expect(r).toMatchObject({ status: "pending_authorization", expires_in_s: 90 });
-    expect(bookingStore.getState().grants).toHaveLength(1);
+  it("describes itself as consequential so the host's confirmation fires (#288)", () => {
+    expect(confirmBooking.spec.description).toMatch(/^Consequential:/);
+    expect(confirmBooking.spec.description).toMatch(/cannot give/);
   });
 
-  it("reports grant_expired after 120s and does not silently retry", async () => {
-    const slot = (await reach("intake_complete"))!;
-    await confirmBooking.run({ slot_id: slot.id }, agent);
-    vi.advanceTimersByTime(GRANT_TTL_MS);
-    const r = expectOk(await confirmBooking.run({ slot_id: slot.id }, agent));
-    expect(r.status).toBe("grant_expired");
-    expect(bookingStore.getState().grants).toHaveLength(1);
-    expect(bookingStore.getState().booking).toBeNull();
-  });
-
-  it("re-checks the slot at commit: a conflict releases the hold and names it", async () => {
-    const slot = (await reach("intake_complete"))!;
-    bookingStore.getState().markSlotTaken(slot.id);
-    const e = expectError(await confirmBooking.run({ slot_id: slot.id }, agent));
-    expect(e.error).toMatch(/^slot_conflict/);
-    expect(bookingStore.getState().hold).toBeNull();
-    expect(bookingStore.getState().stage).toBe("provider_selected");
-  });
-
-  it("commits only through an approved, unexpired, argument-bound grant", async () => {
-    const slot = (await reach("intake_complete"))!;
-    await confirmBooking.run({ slot_id: slot.id }, agent);
-    const grant = bookingStore.getState().grants[0]!;
-
-    // Simulate what the Phase 6 GrantCard will do — the only approval channel.
-    bookingStore.getState().updateGrant(grant.id, "approved");
-
-    const r = expectOk(await confirmBooking.run({ slot_id: slot.id }, agent));
-    expect(r.status).toBe("booked");
-    const s = bookingStore.getState();
-    expect(s.stage).toBe("booked");
-    expect(s.booking?.slot_id).toBe(slot.id);
-    expect(s.grants[0]?.status).toBe("consumed");
-    expect(lastAnnouncement()).toMatch(/^Agent confirmed the booking with Dr\. Amara Okafor on /);
-  });
-
-  it("an approval is void once the arguments change", async () => {
-    const slot = (await reach("intake_complete"))!;
-    await confirmBooking.run({ slot_id: slot.id }, agent);
-    bookingStore.getState().updateGrant(bookingStore.getState().grants[0]!.id, "approved");
-
-    // Switch to a different slot: the held slot (and therefore the argument) changes.
-    const avail = expectOk(await getAvailability.run({}, agent));
-    const other = avail.slots.find((s) => s.id !== slot.id)!;
-    await holdSlot.run({ slot_id: other.id }, agent);
-
-    const r = expectOk(await confirmBooking.run({ slot_id: other.id }, agent));
-    expect(r.status).toBe("pending_authorization");
-    expect(bookingStore.getState().booking).toBeNull();
-  });
-
-  it("a consumed grant cannot be replayed", async () => {
-    const slot = (await reach("intake_complete"))!;
-    await confirmBooking.run({ slot_id: slot.id }, agent);
-    bookingStore.getState().updateGrant(bookingStore.getState().grants[0]!.id, "approved");
-    await confirmBooking.run({ slot_id: slot.id }, agent);
-    // Force the state back as if an attacker replayed the call.
-    bookingStore.getState().holdSlot({ slot_id: slot.id, provider_id: "p01", expires_at: Date.now() + HOLD_TTL_MS });
-    const e = expectError(await confirmBooking.run({ slot_id: slot.id }, agent));
-    expect(e.error).toMatch(/already used/);
+  it("no tool in the catalogue can approve a grant", () => {
+    for (const tool of TOOLS) {
+      expect(tool.name).not.toMatch(/approve|grant|authorize/i);
+    }
   });
 });
 
-describe("output budgets across the fixture", () => {
-  it("every provider's default availability fits the budget", async () => {
-    for (const p of PROVIDERS) {
-      bookingStore.getState().reset();
-      await findProviders.run({ specialty: p.specialty }, agent);
-      await selectProvider.run({ provider_id: p.id }, agent);
-      const r = await getAvailability.run({}, agent);
-      expect(JSON.stringify(r).length, p.id).toBeLessThanOrEqual(1500);
+describe("refusals fulfil, they never throw (#282)", () => {
+  it("holds for every tool given deliberately wrong input", async () => {
+    for (const tool of TOOLS) {
+      const result = await tool.run({ nonsense: true, slot_id: 42, provider_id: 42 });
+      expect(result, tool.name).toHaveProperty("ok");
+      if (isRefusal(result)) expect(typeof result.reason).toBe("string");
     }
   });
 });

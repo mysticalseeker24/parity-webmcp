@@ -1,117 +1,96 @@
 import * as z from "zod";
-import { bookingStore, newId, type Actor, type BookingState } from "../store";
+import type { BookingState } from "../store";
+import { isToolResult, refuse, type ToolRefusal, type ToolResult } from "./result";
 
 /**
  * The factory. One spec fans out to six consumers (CONVENTIONS.md §3):
  *
  *   1. WebMCP registration  — `inputSchema` via `z.toJSONSchema(spec.schema)`
- *   2. The command palette  — reads the same JSON Schema back via getTools()
- *   3. The voice grammar    — `voiceAliases` + enum values on the schema
- *   4. Runtime validation   — `spec.schema.safeParse(input)` in `run()`
- *   5. The live region      — `spec.announce(input, result)`, actor prefixed
- *   6. The audit log        — every run, with `actor`
+ *   2. The command palette  — a form built from that same JSON Schema
+ *   3. The voice grammar    — `voiceAliases` + enum values read off the schema
+ *   4. Runtime validation   — `spec.schema.safeParse` in `run()`
+ *   5. The live region      — `spec.announce(input, result)`
+ *   6. The audit log        — written by the registry, with an actor
  *
- * Nothing here calls `document.modelContext`. That is `registry.ts`'s job and
- * its alone.
+ * Nothing here calls `document.modelContext`. That is `registry.ts`'s job.
  */
 
+/**
+ * Coarse-grained grouping, our answer to spec issue #255 (progressive
+ * disclosure, filed by Sarah Drasner). The state machine already keeps the live
+ * set small; `group` lets the palette and `get_booking_state` present six
+ * headings instead of nineteen descriptions, built from existing primitives
+ * with no spec change.
+ */
+export type ToolGroup = "orient" | "search" | "schedule" | "intake" | "commit" | "manage";
+
+/**
+ * Why a tool is not currently registered. Spec issue #262: unregistering a tool
+ * tells the agent only that it vanished — not whether it is forbidden, not yet
+ * ready, or irrelevant. We keep unregistration for enforcement and hand the
+ * lost context back through `get_booking_state.unavailable[]`.
+ *
+ * `reason_code` is terse on purpose: all non-live tools must fit the 1.5K
+ * output budget.
+ */
+export interface UnavailableReason {
+  readonly reason_code: string;
+  readonly reason: string;
+  /** The tool to call to unlock this one. */
+  readonly unlock_by: string;
+}
+
 export interface ExecuteContext {
-  readonly actor: Actor;
   readonly signal: AbortSignal;
-  /** Wall-clock at the start of the call. Pass it down; never read Date.now() in a tool. */
+  /** Wall clock at the start of the call. Tools never read Date.now() directly. */
   readonly now: number;
 }
 
-/** What a tool returns when it cannot do its job. Name the field so the model
- *  can self-correct (CONVENTIONS.md §7). */
-export interface ToolError {
-  readonly error: string;
-  readonly field?: string;
-  readonly details?: Readonly<Record<string, unknown>>;
-}
-
-export function isToolError(value: unknown): value is ToolError {
-  return typeof value === "object" && value !== null && typeof (value as ToolError).error === "string";
-}
-
-/** Everything `execute` can return except an error. What `announce` receives. */
-export type Success<R> = Exclude<Awaited<R>, ToolError>;
-
-/**
- * `R` is whatever `execute` returns — success shapes and `ToolError`s together.
- * It is inferred from `execute` alone; `announce` and `assertive` then see only
- * the success members. Declaring the union as `Result | ToolError` instead
- * would leave TypeScript unable to infer `Result` and every tool would see
- * `object`.
- *
- * ORDERING RULE: in a tool literal, `execute` must come before `announce` and
- * `assertive`. TypeScript infers `R` from context-sensitive properties in
- * source order; if `announce` is seen first, `R` is fixed as `unknown` and its
- * `result` parameter has no properties. The compiler error is immediate, so
- * the mistake cannot ship — but it looks baffling until you know this.
- */
 export interface ToolSpec<Schema extends z.ZodObject, R> {
   readonly name: string;
   readonly description: string;
   readonly schema: Schema;
-  /** Palette row label and the verb in error announcements. */
+  readonly group: ToolGroup;
+  /** Palette row label, and the verb in a refusal announcement. */
   readonly humanLabel: string;
   readonly voiceAliases?: readonly string[];
-  readonly annotations: { readonly readOnlyHint: boolean; readonly untrustedContentHint?: boolean };
-  readonly reversible: boolean;
-  readonly gated?: boolean;
+  readonly readOnly?: boolean;
+  readonly reversible?: boolean;
+  readonly requiresGrant?: boolean;
+  /** Returns provider-submitted prose. Sets untrustedContentHint. */
+  readonly untrustedOutput?: boolean;
   readonly available: (state: BookingState) => boolean;
-  /** A verb phrase; the factory prefixes the actor. "selected Dr. X" → "Agent selected Dr. X". */
-  readonly announce: (input: z.infer<Schema>, result: Success<R>) => string;
-  /** Results that must interrupt the screen reader — grant requests, conflicts. */
-  readonly assertive?: (result: Success<R>) => boolean;
+  readonly unavailableReason: (state: BookingState) => UnavailableReason;
+  /** A verb phrase; the announcer prefixes the actor. */
+  readonly announce: (input: z.infer<Schema>, result: ToolResult) => string;
   readonly execute: (input: z.infer<Schema>, ctx: ExecuteContext) => R | Promise<R>;
 }
 
 export interface DefinedTool<Schema extends z.ZodObject, R> {
   readonly spec: ToolSpec<Schema, R>;
   readonly name: string;
+  readonly group: ToolGroup;
   readonly inputSchema: Readonly<Record<string, unknown>>;
   readonly available: (state: BookingState) => boolean;
-  /** The one execute path. Validates, runs, announces, audits, returns the agent-facing payload. */
-  readonly run: (
-    rawInput: unknown,
-    ctx: { actor: Actor; signal?: AbortSignal },
-  ) => Promise<Success<R> | ToolError>;
-  /** The object handed to `registerTool`. Built by the registry, nowhere else. */
-  readonly toModelContextTool: () => WebMCP.ModelContextTool;
+  readonly unavailableReason: (state: BookingState) => UnavailableReason;
+  /** The one execute path: validate → run → envelope. Never throws. */
+  readonly run: (rawInput: unknown, signal?: AbortSignal) => Promise<ToolResult>;
+  /** The object handed to registerTool. Built by the registry, nowhere else. */
+  readonly toModelContextTool: (
+    onResult: (tool: DefinedTool<Schema, R>, input: unknown, result: ToolResult) => void,
+  ) => WebMCP.ModelContextTool;
 }
 
-// A heterogeneous list of tools. `any` here is the standard variance escape:
-// every tool's `announce` takes its own input/result types, which no common
-// supertype other than `any` accepts under strictFunctionTypes.
+// A heterogeneous list of tools. `any` is the standard variance escape here:
+// each tool's announce/execute take their own types, and under
+// strictFunctionTypes no common supertype but `any` accepts them all.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyDefinedTool = DefinedTool<any, any>;
 
 // ---------------------------------------------------------------------------
-// Actor attribution for calls that arrive through the browser.
-//
-// When the human palette calls `document.modelContext.executeTool()`, the
-// browser invokes the same closure the agent's calls reach. The closure cannot
-// tell who called. So the palette marks the next call as human just before
-// executing, and the closure consumes that mark. Anything unmarked is the agent.
-// ---------------------------------------------------------------------------
-
-let pendingActor: Actor | null = null;
-
-export function markNextCallAs(actor: Actor): void {
-  pendingActor = actor;
-}
-
-function takePendingActor(): Actor {
-  const actor = pendingActor ?? "agent";
-  pendingActor = null;
-  return actor;
-}
-
-// ---------------------------------------------------------------------------
-// Character budgets (TOOLS.md §6). Asserted at definition time in dev so a
-// violation fails the test run, not the demo.
+// Character budgets (TOOLS.md §6). Asserted at definition time in dev, so a
+// violation fails the test run rather than quietly degrading agent behaviour.
+// Counted in characters, and we say "characters" (spec issue #219).
 // ---------------------------------------------------------------------------
 
 export const BUDGET = {
@@ -127,144 +106,171 @@ function budgetViolation(message: string): never {
 }
 
 function assertBudgets(name: string, description: string, schema: Record<string, unknown>): void {
-  if (name.length > BUDGET.toolName) budgetViolation(`tool name "${name}" is ${name.length} chars (max ${BUDGET.toolName})`);
+  if (name.length > BUDGET.toolName) {
+    budgetViolation(`tool name "${name}" is ${name.length} characters (max ${BUDGET.toolName})`);
+  }
   if (!/^[a-z][a-z0-9_]*$/.test(name)) budgetViolation(`tool name "${name}" must be snake_case`);
   if (description.length > BUDGET.toolDescription) {
-    budgetViolation(`${name}: description is ${description.length} chars (max ${BUDGET.toolDescription})`);
+    budgetViolation(
+      `${name}: description is ${description.length} characters (max ${BUDGET.toolDescription})`,
+    );
   }
   const properties = (schema.properties ?? {}) as Record<string, { description?: unknown }>;
   for (const [param, def] of Object.entries(properties)) {
-    if (param.length > BUDGET.paramName) budgetViolation(`${name}.${param}: name is ${param.length} chars (max ${BUDGET.paramName})`);
+    if (param.length > BUDGET.paramName) {
+      budgetViolation(`${name}.${param}: name is ${param.length} characters (max ${BUDGET.paramName})`);
+    }
     const paramDescription = def.description;
+    // Spec issue #286: the palette generates its form label from this text, so
+    // a field without .describe() would render an unlabelled input. One source
+    // means the accessible name and the parameter description cannot disagree.
     if (typeof paramDescription !== "string" || paramDescription.length === 0) {
-      budgetViolation(`${name}.${param}: every field needs .describe() (TOOLS.md §7)`);
+      budgetViolation(`${name}.${param}: every field needs .describe() — it is also the form label`);
     }
     if (paramDescription.length > BUDGET.paramDescription) {
-      budgetViolation(`${name}.${param}: description is ${paramDescription.length} chars (max ${BUDGET.paramDescription})`);
+      budgetViolation(
+        `${name}.${param}: description is ${paramDescription.length} characters (max ${BUDGET.paramDescription})`,
+      );
     }
   }
 }
 
 /**
- * Zod → JSON Schema for the *input* side. Two things the defaults get wrong:
+ * Zod → JSON Schema for the *input* side. Two corrections to the defaults:
  *
- *  - `io` defaults to "output", where a field with `.default()` is always
- *    present and therefore listed as `required`. The agent would be told it
- *    must send `time_of_day` when it need not. "input" lists only true
- *    requirements.
- *  - "input" mode omits `additionalProperties: false`. We add it back so the
- *    agent is told not to invent parameters (Zod strips them anyway).
+ *  - `io` defaults to "output", where a field carrying `.default()` is always
+ *    present and so listed as `required` — telling the agent it must send a
+ *    parameter it need not. "input" lists only true requirements.
+ *  - "input" mode drops `additionalProperties: false`; we restore it so the
+ *    agent is told not to invent parameters.
  *
- * The `$schema` key is dropped: the browser has no use for it.
+ * `$schema` is stripped: the browser has no use for it.
  */
 function toInputSchema(schema: z.ZodObject): Record<string, unknown> {
-  const { $schema: _ignored, ...rest } = z.toJSONSchema(schema, { io: "input" }) as Record<string, unknown>;
+  const { $schema: _ignored, ...rest } = z.toJSONSchema(schema, { io: "input" }) as Record<
+    string,
+    unknown
+  >;
   return { ...rest, additionalProperties: false };
 }
 
-function zodErrorToToolError(error: z.ZodError): ToolError {
+/** A concrete valid value for a field, so `invalid_input` can show one. */
+function exampleFor(schema: Record<string, unknown>, field: string): string | undefined {
+  const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
+  const def = properties[field.split(".")[0] ?? ""];
+  if (!def) return undefined;
+  const enumValues = def["enum"] ?? (def["items"] as Record<string, unknown> | undefined)?.["enum"];
+  if (Array.isArray(enumValues) && enumValues.length > 0) {
+    return `one of ${enumValues.slice(0, 6).map((v) => JSON.stringify(v)).join(", ")}`;
+  }
+  if (typeof def["pattern"] === "string" && def["pattern"].includes("\\d{4}")) return '"2026-10-14"';
+  switch (def["type"]) {
+    case "string":
+      return '"text"';
+    case "number":
+    case "integer":
+      return "10";
+    case "boolean":
+      return "true";
+    case "array":
+      return "[]";
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Spec issue #282: `invalid_input` always names the field and shows a valid
+ * example, so the model can self-correct and retry rather than guess.
+ */
+function zodErrorToRefusal(error: z.ZodError, schema: Record<string, unknown>): ToolRefusal {
   const first = error.issues[0];
-  if (!first) return { error: "invalid input" };
-  const field = first.path.map(String).join(".") || undefined;
-  return field
-    ? { error: `${field}: ${first.message}`, field }
-    : { error: first.message };
+  if (!first) return refuse("invalid_input", "The input did not match the expected shape.");
+  const field = first.path.map(String).join(".");
+  const example = field ? exampleFor(schema, field) : undefined;
+  const reason = example
+    ? `${first.message}. Valid: ${example}.`
+    : first.message;
+  return refuse("invalid_input", reason, field ? { field } : undefined);
 }
 
 /** Never leak a stack or an internal path to the agent (CONVENTIONS.md §7). */
 function safeMessage(error: unknown): string {
-  if (error instanceof Error) return error.message.split("\n")[0] ?? "unexpected error";
-  return "unexpected error";
+  if (error instanceof Error) {
+    const firstLine = error.message.split("\n")[0] ?? "";
+    // Strip anything that looks like a path or a URL.
+    return firstLine.replace(/\s*(?:[A-Za-z]:)?[/\\][\w./\\-]+/g, "").trim() || "internal error";
+  }
+  return "internal error";
 }
 
-const ACTOR_LABEL: Record<Actor, string> = { agent: "Agent", human: "You" };
-
-export function defineTool<Schema extends z.ZodObject, R>(
+export function defineTool<Schema extends z.ZodObject, R extends ToolResult>(
   spec: ToolSpec<Schema, R>,
 ): DefinedTool<Schema, R> {
   const inputSchema = toInputSchema(spec.schema);
   if (import.meta.env.DEV) assertBudgets(spec.name, spec.description, inputSchema);
 
-  const run: DefinedTool<Schema, R>["run"] = async (rawInput, ctx) => {
-    const now = Date.now();
-    const signal = ctx.signal ?? new AbortController().signal;
+  const run: DefinedTool<Schema, R>["run"] = async (rawInput, signal) => {
     const parsed = spec.schema.safeParse(rawInput ?? {});
+    if (!parsed.success) return zodErrorToRefusal(parsed.error, inputSchema);
 
-    let payload: Success<R> | ToolError;
-    if (!parsed.success) {
-      payload = zodErrorToToolError(parsed.error);
-    } else {
-      try {
-        // `execute` returns R, which may contain ToolError members; the
-        // isToolError check below is the runtime split of that union.
-        payload = (await spec.execute(parsed.data, { actor: ctx.actor, signal, now })) as Success<R> | ToolError;
-      } catch (error) {
-        payload = { error: safeMessage(error) };
-      }
+    let result: ToolResult;
+    try {
+      result = await spec.execute(parsed.data, {
+        signal: signal ?? new AbortController().signal,
+        now: Date.now(),
+      });
+    } catch (error) {
+      // A genuine defect. Refusals fulfil; only bugs land here, and the agent
+      // gets a clean sentence rather than a stack trace (CONVENTIONS.md §7).
+      console.error(`[${spec.name}] threw`, error);
+      return refuse("refused", `${spec.humanLabel} failed: ${safeMessage(error)}`);
     }
 
-    const ok = !isToolError(payload);
-    let text: string;
-    let assertive: boolean;
-    if (isToolError(payload)) {
-      text = `${ACTOR_LABEL[ctx.actor]} could not ${spec.humanLabel.toLowerCase()}: ${payload.error}`;
-      assertive = true;
-    } else {
-      // A broken announce() must never turn a successful tool call into a
-      // thrown one: the agent would see "invocation failed" for a booking that
-      // actually happened (CONVENTIONS.md §7). Announce a fallback instead.
-      const input = parsed.success ? parsed.data : ({} as z.infer<Schema>);
-      try {
-        text = `${ACTOR_LABEL[ctx.actor]} ${spec.announce(input, payload)}`;
-        assertive = spec.assertive?.(payload) ?? false;
-      } catch (error) {
-        console.error(`[defineTool] ${spec.name}.announce threw`, error);
-        text = `${ACTOR_LABEL[ctx.actor]} ran ${spec.humanLabel.toLowerCase()}.`;
-        assertive = false;
-      }
+    if (!isToolResult(result)) {
+      console.error(`[${spec.name}] returned a non-envelope value`, result);
+      return refuse("refused", `${spec.humanLabel} returned an unexpected result.`);
     }
-
-    const store = bookingStore.getState();
-    store.announce({ id: newId("ann"), at: now, text, actor: ctx.actor, politeness: assertive ? "assertive" : "polite" });
-    store.appendAudit({
-      id: newId("audit"),
-      at: now,
-      tool: spec.name,
-      actor: ctx.actor,
-      input: parsed.success ? parsed.data : rawInput,
-      ok,
-      summary: text,
-      reversible: spec.reversible,
-    });
 
     if (import.meta.env.DEV) {
-      const size = JSON.stringify(payload).length;
-      if (size > BUDGET.output) budgetViolation(`${spec.name}: output is ${size} chars (max ${BUDGET.output})`);
+      const size = JSON.stringify(result).length;
+      if (size > BUDGET.output) {
+        budgetViolation(`${spec.name}: output is ${size} characters (max ${BUDGET.output})`);
+      }
     }
-    return payload;
+    return result;
   };
 
-  return {
+  const defined: DefinedTool<Schema, R> = {
     spec,
     name: spec.name,
+    group: spec.group,
     inputSchema,
     available: spec.available,
+    unavailableReason: spec.unavailableReason,
     run,
-    toModelContextTool: () => ({
+    toModelContextTool: (onResult) => ({
       name: spec.name,
       title: spec.humanLabel,
       description: spec.description,
       inputSchema,
+      // Honest signals, never enforcement (CONVENTIONS.md §5). Enforcement is
+      // state-machine registration plus the grant gate.
       annotations: {
-        readOnlyHint: spec.annotations.readOnlyHint,
-        untrustedContentHint: spec.annotations.untrustedContentHint ?? false,
+        readOnlyHint: spec.readOnly ?? false,
+        untrustedContentHint: spec.untrustedOutput ?? false,
       },
-      // `options` is optional here even though the typings make it required:
-      // destructuring `{ signal }` from an absent second argument throws
-      // before `run()` starts, and the browser reports it as the tool having
-      // failed. Verified against Chrome 152 — see PHASE1_FINDINGS.md.
-      execute: (input, options) =>
-        run(input, options?.signal ? { actor: takePendingActor(), signal: options.signal } : { actor: takePendingActor() }),
+      // `options` is optional despite the typings: Chrome 152 calls execute
+      // with a single argument, and destructuring `{ signal }` from an absent
+      // second argument throws before the tool body runs — the browser then
+      // reports every tool as failed. See .agent/PHASE1_FINDINGS.md §6.
+      execute: async (input, options) => {
+        const result = await run(input, options?.signal);
+        onResult(defined, input, result);
+        return result;
+      },
     }),
   };
+
+  return defined;
 }
