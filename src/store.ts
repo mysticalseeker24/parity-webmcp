@@ -2,19 +2,19 @@ import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { Accommodation } from "./data/accommodations";
 import type { Specialty } from "./data/providers";
+import type { ToolResult } from "./lib/result";
 
 /**
- * The single store (CONVENTIONS.md §8). The registry subscribes to it outside
- * the React tree; components subscribe inside. Every tool's `available(state)`
- * predicate is a pure function of `BookingState` — so the *only* way a tool
- * becomes callable is a transition recorded here.
+ * The single store (CONVENTIONS.md §8). The registry subscribes outside the
+ * React tree; components subscribe inside. Every tool's `available(state)`
+ * predicate is a pure function of this, so the only way a tool becomes
+ * callable is a transition recorded here.
  *
  * State machine (PROJECT_SPEC.md §6):
- *
  *   browsing → provider_selected → slot_held → intake_complete → booked
  *
- * `stage` is stored, not derived, so a transition is a single explicit line in
- * an action below rather than a computation scattered across predicates.
+ * Transitions here are pure and synchronous. No timers in this phase — hold
+ * expiry arrives in Phase 3, owned by `lib/timers.ts`, never by a component.
  */
 
 export type Stage = "browsing" | "provider_selected" | "slot_held" | "intake_complete" | "booked";
@@ -32,10 +32,10 @@ export interface LastSearch {
   readonly eliminated_by: Readonly<Record<string, number>>;
 }
 
-export interface Hold {
-  readonly slot_id: string;
-  readonly provider_id: string;
-  readonly expires_at: number;
+export interface HeldSlot {
+  readonly slotId: string;
+  readonly providerId: string;
+  readonly expiresAt: number;
 }
 
 export interface Intake {
@@ -48,57 +48,43 @@ export interface Intake {
 export const INTAKE_REQUIRED = ["patient_name", "dob", "reason"] as const;
 export type IntakeRequiredField = (typeof INTAKE_REQUIRED)[number];
 
-export interface Booking {
-  readonly id: string;
-  readonly slot_id: string;
-  readonly provider_id: string;
-  readonly confirmed_at: number;
-  readonly intake: Intake;
+/** Caregiver availability window. Set by Tier 2's set_companion_constraint. */
+export interface Companion {
+  readonly name?: string;
+  readonly available_from?: string;
+  readonly available_to?: string;
 }
 
-export type GrantStatus = "pending" | "approved" | "denied" | "consumed";
-
-export interface Grant {
+export interface Booking {
   readonly id: string;
-  readonly tool: string;
-  readonly args_hash: string;
-  readonly issued_at: number;
-  readonly expires_at: number;
-  readonly status: GrantStatus;
+  readonly slotId: string;
+  readonly providerId: string;
+  readonly confirmedAt: number;
+  readonly intake: Intake;
 }
 
 export interface AuditEntry {
   readonly id: string;
   readonly at: number;
+  /** A tool name, or "system" for transitions nobody called (hold expiry). */
   readonly tool: string;
-  readonly actor: Actor;
-  readonly input: unknown;
-  readonly ok: boolean;
-  readonly summary: string;
-  readonly reversible: boolean;
-}
-
-export interface Announcement {
-  readonly id: string;
-  readonly at: number;
-  readonly text: string;
   readonly actor: Actor | "system";
-  readonly politeness: "polite" | "assertive";
+  readonly input: unknown;
+  readonly result: ToolResult | { readonly reason_code: string };
 }
 
 export interface BookingState {
   readonly stage: Stage;
-  readonly lastSearch: LastSearch | null;
   readonly selectedProviderId: string | null;
+  readonly lastSearch: LastSearch | null;
   readonly hasFetchedAvailability: boolean;
-  readonly hold: Hold | null;
+  readonly heldSlot: HeldSlot | null;
   readonly intake: Intake;
   readonly booking: Booking | null;
-  /** Slots booked "by someone else" — drives the hold→confirm conflict case. */
-  readonly takenSlotIds: readonly string[];
-  readonly grants: readonly Grant[];
+  readonly companion: Companion | null;
   readonly audit: readonly AuditEntry[];
-  readonly announcements: readonly Announcement[];
+  /** Slots held or booked by someone else. Drives the conflict path. */
+  readonly takenSlotIds: readonly string[];
   /** Names of the tools currently registered. Written by the registry only. */
   readonly liveTools: readonly string[];
 }
@@ -107,16 +93,13 @@ export interface BookingActions {
   recordSearch(search: LastSearch): void;
   selectProvider(providerId: string): void;
   markAvailabilityFetched(): void;
-  holdSlot(hold: Hold): void;
-  /** Release the hold and fall back to provider_selected. Used by expiry too. */
-  releaseHold(reason: "expired" | "released" | "conflict"): void;
+  holdSlot(held: HeldSlot): void;
+  releaseHold(): void;
   setIntake(patch: Intake): void;
+  setCompanion(companion: Companion): void;
   confirmBooking(booking: Booking): void;
   markSlotTaken(slotId: string): void;
-  addGrant(grant: Grant): void;
-  updateGrant(id: string, status: GrantStatus): void;
   appendAudit(entry: AuditEntry): void;
-  announce(announcement: Announcement): void;
   setLiveTools(names: readonly string[]): void;
   reset(): void;
 }
@@ -125,7 +108,6 @@ export type BookingStore = BookingState & BookingActions;
 
 export const HOLD_TTL_MS = 10 * 60 * 1000;
 const AUDIT_CAP = 50;
-const ANNOUNCEMENT_CAP = 20;
 
 export function intakeMissing(intake: Intake): IntakeRequiredField[] {
   return INTAKE_REQUIRED.filter((field) => {
@@ -140,38 +122,26 @@ export function isIntakeComplete(intake: Intake): boolean {
 
 const INITIAL: BookingState = {
   stage: "browsing",
-  lastSearch: null,
   selectedProviderId: null,
+  lastSearch: null,
   hasFetchedAvailability: false,
-  hold: null,
+  heldSlot: null,
   intake: {},
   booking: null,
-  takenSlotIds: [],
-  grants: [],
+  companion: null,
   audit: [],
-  announcements: [],
+  takenSlotIds: [],
   liveTools: [],
 };
 
-let nextId = 0;
+let idCounter = 0;
 export function newId(prefix: string): string {
-  nextId += 1;
-  return `${prefix}_${Date.now().toString(36)}_${nextId}`;
+  idCounter += 1;
+  return `${prefix}_${idCounter}`;
 }
 
-// Hold expiry lives here, not in a component, because the hold must expire
-// whether or not anything is mounted — the registry has to see it and
-// unregister confirm_booking (PROJECT_SPEC.md §10, "hold expires").
-let holdTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearHoldTimer(): void {
-  if (holdTimer !== null) {
-    clearTimeout(holdTimer);
-    holdTimer = null;
-  }
-}
-
-function stageAfterHold(intake: Intake): Stage {
+/** slot_held or intake_complete, depending on whether intake is done. */
+function stageWithHold(intake: Intake): Stage {
   return isIntakeComplete(intake) ? "intake_complete" : "slot_held";
 }
 
@@ -180,44 +150,21 @@ export const bookingStore = createStore<BookingStore>()((set, get) => ({
 
   recordSearch: (search) => set({ lastSearch: search }),
 
-  selectProvider: (providerId) => {
-    clearHoldTimer();
+  selectProvider: (providerId) =>
     set({
       stage: "provider_selected",
       selectedProviderId: providerId,
       hasFetchedAvailability: false,
-      hold: null,
-    });
-  },
+      heldSlot: null,
+    }),
 
   markAvailabilityFetched: () => set({ hasFetchedAvailability: true }),
 
-  holdSlot: (hold) => {
-    clearHoldTimer();
-    set((s) => ({ hold, stage: stageAfterHold(s.intake) }));
-    holdTimer = setTimeout(
-      () => {
-        holdTimer = null;
-        if (get().hold?.slot_id === hold.slot_id) get().releaseHold("expired");
-      },
-      Math.max(0, hold.expires_at - Date.now()),
-    );
-  },
+  holdSlot: (held) => set((s) => ({ heldSlot: held, stage: stageWithHold(s.intake) })),
 
-  releaseHold: (reason) => {
-    clearHoldTimer();
-    const { hold } = get();
-    if (!hold) return;
-    set({ hold: null, stage: "provider_selected" });
-    if (reason === "expired") {
-      get().announce({
-        id: newId("ann"),
-        at: Date.now(),
-        text: "Your hold on the appointment slot has expired. Hold a slot again to continue.",
-        actor: "system",
-        politeness: "assertive",
-      });
-    }
+  releaseHold: () => {
+    if (!get().heldSlot) return;
+    set({ heldSlot: null, stage: "provider_selected" });
   },
 
   setIntake: (patch) =>
@@ -228,34 +175,24 @@ export const bookingStore = createStore<BookingStore>()((set, get) => ({
         if (value !== undefined) Object.assign(merged, { [key]: value });
       }
       const stage =
-        s.stage === "slot_held" || s.stage === "intake_complete" ? stageAfterHold(merged) : s.stage;
+        s.stage === "slot_held" || s.stage === "intake_complete" ? stageWithHold(merged) : s.stage;
       return { intake: merged, stage };
     }),
 
-  confirmBooking: (booking) => {
-    clearHoldTimer();
-    set({ booking, hold: null, stage: "booked" });
-  },
+  setCompanion: (companion) => set({ companion }),
+
+  confirmBooking: (booking) => set({ booking, heldSlot: null, stage: "booked" }),
 
   markSlotTaken: (slotId) =>
-    set((s) => (s.takenSlotIds.includes(slotId) ? s : { takenSlotIds: [...s.takenSlotIds, slotId] })),
-
-  addGrant: (grant) => set((s) => ({ grants: [...s.grants, grant] })),
-
-  updateGrant: (id, status) =>
-    set((s) => ({ grants: s.grants.map((g) => (g.id === id ? { ...g, status } : g)) })),
+    set((s) =>
+      s.takenSlotIds.includes(slotId) ? s : { takenSlotIds: [...s.takenSlotIds, slotId] },
+    ),
 
   appendAudit: (entry) => set((s) => ({ audit: [...s.audit, entry].slice(-AUDIT_CAP) })),
 
-  announce: (announcement) =>
-    set((s) => ({ announcements: [...s.announcements, announcement].slice(-ANNOUNCEMENT_CAP) })),
-
   setLiveTools: (names) => set({ liveTools: [...names] }),
 
-  reset: () => {
-    clearHoldTimer();
-    set(INITIAL);
-  },
+  reset: () => set(INITIAL),
 }));
 
 export function useBookingStore<T>(selector: (state: BookingStore) => T): T {

@@ -2,75 +2,51 @@ import * as z from "zod";
 
 /**
  * The accommodation vocabulary. Exported exactly once and consumed by
- * `list_accommodations`, `find_providers`, `select_provider` and `set_intake`
- * (TOOLS.md §10). One vocabulary, every consumer — an agent that reads it from
- * `list_accommodations` cannot then invent a value `find_providers` rejects.
+ * `list_accommodations`, `find_providers` and `set_intake`.
+ *
+ * Spec issue #239 (grammar-level injection mitigation): a `z.enum` becomes a
+ * JSON Schema `enum`, which *structurally* constrains what the agent can send.
+ * That is stronger than a sentence in a description asking it to behave, and it
+ * gives the palette a `<select>` for free.
  */
 export const ACCOMMODATION = z.enum([
   "wheelchair_accessible",
   "step_free_entrance",
-  "accessible_restroom",
-  "hoist_available",
   "asl_interpreter",
-  "spoken_language_interpreter",
-  "low_sensory_waiting",
   "extended_appointment",
-  "service_animal_welcome",
-  "caregiver_may_attend",
-  "paratransit_drop_off",
+  "low_sensory",
+  "ground_floor",
+  "companion_seating",
+  "guide_dog_welcome",
+  "hoist_transfer",
+  "large_print_forms",
 ]);
 
 export type Accommodation = z.infer<typeof ACCOMMODATION>;
 
-/** Short labels for announcements and the palette. Kept terse: they are also
- *  serialized into `list_accommodations` output, which has a 1.5K budget. */
-export const ACCOMMODATION_LABELS: Record<Accommodation, { label: string; description: string }> = {
-  wheelchair_accessible: {
-    label: "Wheelchair accessible",
-    description: "Exam room and route from entrance fit a wheelchair.",
-  },
-  step_free_entrance: {
-    label: "Step-free entrance",
-    description: "No steps between street and reception.",
-  },
-  accessible_restroom: {
-    label: "Accessible restroom",
-    description: "Restroom with grab bars and turning space.",
-  },
-  hoist_available: {
-    label: "Hoist available",
-    description: "Patient hoist for exam-table transfers.",
-  },
-  asl_interpreter: {
-    label: "ASL interpreter",
-    description: "Sign-language interpreter can be booked.",
-  },
-  spoken_language_interpreter: {
-    label: "Spoken-language interpreter",
-    description: "Interpreter for languages the provider does not speak.",
-  },
-  low_sensory_waiting: {
-    label: "Low-sensory waiting area",
-    description: "Quiet, dimmed waiting space on request.",
-  },
-  extended_appointment: {
-    label: "Extended appointment",
-    description: "60-minute slots offered.",
-  },
-  service_animal_welcome: {
-    label: "Service animal welcome",
-    description: "Service animals admitted throughout.",
-  },
-  caregiver_may_attend: {
-    label: "Caregiver may attend",
-    description: "A companion may stay for the whole visit.",
-  },
-  paratransit_drop_off: {
-    label: "Paratransit drop-off",
-    description: "Marked drop-off point at the entrance.",
-  },
+/**
+ * Labels double as the palette's form labels and the announcer's wording, so
+ * they are written to read as a label rather than as a hint to a model
+ * (spec issue #286 — one source, so the accessible name and the parameter
+ * description cannot disagree).
+ */
+export const ACCOMMODATION_LABELS: Record<Accommodation, string> = {
+  wheelchair_accessible: "Wheelchair accessible",
+  step_free_entrance: "Step-free entrance",
+  asl_interpreter: "ASL interpreter",
+  extended_appointment: "Extended appointment",
+  low_sensory: "Low-sensory environment",
+  ground_floor: "Ground floor",
+  companion_seating: "Companion seating",
+  guide_dog_welcome: "Guide dog welcome",
+  hoist_transfer: "Hoist transfer",
+  large_print_forms: "Large-print forms",
 };
 
 export function accommodationLabel(id: Accommodation): string {
-  return ACCOMMODATION_LABELS[id].label;
+  return ACCOMMODATION_LABELS[id];
+}
+
+export function accommodationLabels(ids: readonly Accommodation[]): string {
+  return ids.map(accommodationLabel).join(", ");
 }

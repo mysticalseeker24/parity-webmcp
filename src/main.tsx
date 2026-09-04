@@ -5,7 +5,7 @@ import { startRegistry } from "./lib/registry";
 import { TOOLS } from "./tools";
 import "./index.css";
 
-// The registry starts before React and outside it. Registration is a function
+// The registry starts before React and outside it: registration is a function
 // of store state, not of what is mounted (CONVENTIONS.md §3, §8).
 startRegistry(TOOLS);
 

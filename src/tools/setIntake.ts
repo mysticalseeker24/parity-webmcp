@@ -2,8 +2,8 @@ import * as z from "zod";
 import { ACCOMMODATION } from "../data/accommodations";
 import { isRealDate } from "../data/slots";
 import { defineTool } from "../lib/defineTool";
+import { ok, refuse } from "../lib/result";
 import { bookingStore, intakeMissing, type Intake } from "../store";
-import { nextStep } from "./shared";
 
 const FIELD_LABELS: Record<string, string> = {
   patient_name: "patient name",
@@ -12,41 +12,63 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 /**
- * Structured intake. Partial updates are allowed; completeness is computed, and
- * the stage flips to intake_complete — which is what registers confirm_booking —
- * only when every required field is present. Structural, not a runtime check.
+ * Structured intake. Partial updates are allowed and completeness is computed;
+ * the stage flips to `intake_complete` — which is what registers
+ * `confirm_booking` — only when every required field is present. That is
+ * structural, not a runtime check (CONVENTIONS.md §5).
  */
 export const setIntake = defineTool({
   name: "set_intake",
   humanLabel: "Fill in intake",
+  group: "intake",
+  reversible: true,
   description:
-    "Record patient intake for the held slot: name, date of birth, reason for visit, and accommodations needed on the day. Send any subset; fields you omit are kept. The result lists what is still missing. confirm_booking becomes available once nothing is.",
+    "Record patient intake for the held slot: name, date of birth, reason for the visit, and any accommodations needed on the day. Send any subset; omitted fields keep their current value. The result lists what is still missing.",
   schema: z.object({
-    patient_name: z.string().min(1).optional().describe("Patient's full name as it should appear on the booking."),
-    dob: z.string().optional().describe("Date of birth, YYYY-MM-DD."),
-    reason: z.string().min(1).optional().describe("Reason for the visit, in the patient's own words."),
+    patient_name: z.string().min(1).optional().describe("Patient's full name"),
+    dob: z.string().optional().describe("Date of birth (YYYY-MM-DD)"),
+    reason: z.string().min(1).optional().describe("Reason for the visit, in the patient's words"),
     accommodations: z
       .array(ACCOMMODATION)
       .optional()
-      .describe("Accommodations needed on the day, by id from list_accommodations."),
+      .describe("Accommodations needed on the day"),
   }),
-  annotations: { readOnlyHint: false },
-  reversible: true,
-  available: (state) => state.stage === "slot_held" || state.stage === "intake_complete",
   voiceAliases: ["fill in my details", "intake"],
+  available: (state) => state.stage === "slot_held" || state.stage === "intake_complete",
+  unavailableReason: (state) => {
+    if (state.stage === "booked") {
+      return {
+        reason_code: "already_booked",
+        reason: "The appointment is already booked.",
+        unlock_by: "",
+      };
+    }
+    return {
+      reason_code: "no_hold",
+      reason: "No slot is on hold yet.",
+      unlock_by: "hold_slot",
+    };
+  },
   execute: (input, { now }) => {
     const provided = Object.entries(input).filter(([, v]) => v !== undefined);
     if (provided.length === 0) {
-      return { error: "provide at least one of patient_name, dob, reason, accommodations" };
+      return refuse(
+        "invalid_input",
+        "Provide at least one of patient_name, dob, reason or accommodations.",
+      );
     }
 
+    // Strict validation in code, loose in schema (CONVENTIONS.md §4).
     if (input.dob !== undefined) {
       if (!isRealDate(input.dob)) {
-        return { error: `dob must be ISO 8601 (YYYY-MM-DD); received "${input.dob}"`, field: "dob" };
+        return refuse(
+          "invalid_input",
+          `dob must be ISO 8601 (YYYY-MM-DD); received "${input.dob}". Valid: "1984-03-09".`,
+          { field: "dob" },
+        );
       }
-      const today = new Date(now).toISOString().slice(0, 10);
-      if (input.dob > today) {
-        return { error: `dob ${input.dob} is in the future`, field: "dob" };
+      if (input.dob > new Date(now).toISOString().slice(0, 10)) {
+        return refuse("invalid_input", `dob ${input.dob} is in the future.`, { field: "dob" });
       }
     }
 
@@ -60,16 +82,13 @@ export const setIntake = defineTool({
 
     const state = bookingStore.getState();
     const missing = intakeMissing(state.intake);
-    return {
-      intake: state.intake,
-      complete: missing.length === 0,
-      missing,
-      stage: state.stage,
-      next_step: nextStep(state),
-    };
+    return ok(
+      { intake: state.intake, complete: missing.length === 0, missing, stage: state.stage },
+      missing.length === 0
+        ? `Intake complete for ${state.intake.patient_name ?? "the patient"}.`
+        : `Still missing: ${missing.map((f) => FIELD_LABELS[f] ?? f).join(", ")}.`,
+    );
   },
   announce: (_input, result) =>
-    result.complete
-      ? `completed intake for ${result.intake.patient_name ?? "the patient"}.`
-      : `updated intake. Still missing: ${result.missing.map((f) => FIELD_LABELS[f] ?? f).join(", ")}.`,
+    result.ok ? `updated the intake. ${result.human_summary}` : "could not update the intake.",
 });

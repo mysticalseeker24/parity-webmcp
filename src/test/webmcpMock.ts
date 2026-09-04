@@ -38,11 +38,31 @@ export class MockModelContext extends EventTarget implements WebMCP.ModelContext
   /** Every `executeTool` call, in order — lets tests assert the JSON-string contract. */
   readonly executeCalls: { name: string; args: string }[] = [];
 
+  /**
+   * Registration and unregistration events in order, so `registry.test.ts` can
+   * assert the *diff* on each state change rather than only the resulting set.
+   * A registry that unregistered everything and re-registered it would produce
+   * the same final set but a very different agent experience: every tool would
+   * appear to churn on every keystroke.
+   */
+  readonly log: { op: "register" | "unregister"; name: string }[] = [];
+
+  /** Names currently registered, in registration order. */
+  get toolNames(): string[] {
+    return [...this.#tools.keys()];
+  }
+
+  /** Drop the log so a test can assert only what a single transition did. */
+  clearLog(): void {
+    this.log.length = 0;
+  }
+
   registerTool(
     tool: WebMCP.ModelContextTool,
     options?: WebMCP.ModelContextRegisterToolOptions,
   ): Promise<void> {
     if (options?.signal?.aborted) return Promise.resolve();
+    this.log.push({ op: "register", name: tool.name });
 
     this.#tools.set(tool.name, {
       definition: tool,
@@ -68,6 +88,7 @@ export class MockModelContext extends EventTarget implements WebMCP.ModelContext
       "abort",
       () => {
         this.#tools.delete(tool.name);
+        this.log.push({ op: "unregister", name: tool.name });
         this.#emitToolChange();
       },
       { once: true },
