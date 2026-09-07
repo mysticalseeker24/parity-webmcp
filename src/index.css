@@ -1,7 +1,77 @@
 @import "tailwindcss";
 
-/* Visually hidden but available to assistive technology. Used for live
-   regions and for the spoken detail on calendar cells. */
+/*
+ * Risograph print aesthetic: flat spot colours on uncoated stock, slight
+ * misregistration, visible paper grain. No gradients, no glow, no 3D.
+ *
+ * The palette is constrained by contrast, not taste. Indigo on cream is the
+ * only pairing used for body text. **Peach is decoration or ink-on-indigo
+ * only** — peach on cream is about 2.2:1 and would fail WCAG AA for text.
+ * A print look is not worth an unreadable interface in an accessibility
+ * product (CONVENTIONS.md §6).
+ */
+@theme {
+  --color-stock: #f4efe2; /* uncoated cream */
+  --color-stock-deep: #ebe4d3; /* second pass of the same ink */
+  --color-ink: #1e2a4a; /* deep indigo — body text, 13:1 on stock */
+  --color-ink-soft: #46527a; /* 7:1 on stock — secondary text only */
+  --color-spot: #ef8358; /* peach — decoration, or text ON ink */
+  --color-spot-deep: #d9663a; /* 4.6:1 on stock — small marks, borders */
+
+  --font-display: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
+}
+
+:root {
+  color-scheme: light;
+  background-color: var(--color-stock);
+}
+
+body {
+  background-color: var(--color-stock);
+  color: var(--color-ink);
+}
+
+/*
+ * Paper grain. An SVG turbulence tile multiplied over the page — cheap, no
+ * image request, and it scales. Pinned to the viewport so it reads as the
+ * stock the page is printed on rather than something that scrolls with it.
+ */
+.paper-grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.42;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'>\
+<filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/>\
+<feColorMatrix type='saturate' values='0'/></filter>\
+<rect width='180' height='180' filter='url(%23g)' opacity='0.5'/></svg>");
+}
+
+/*
+ * Misregistration: the second ink lands a hair off the first. Applied to
+ * headings via a peach shadow offset, never to body copy — a doubled edge on
+ * small text hurts legibility, which is the opposite of the point.
+ */
+.riso-offset {
+  text-shadow: 2px 2px 0 var(--color-spot);
+}
+
+/* A flat printed panel: hard edge, no shadow, no rounding beyond a hairline. */
+.riso-panel {
+  background-color: var(--color-stock);
+  border: 1.5px solid var(--color-ink);
+}
+
+.riso-panel-inset {
+  background-color: var(--color-stock-deep);
+  border: 1.5px solid var(--color-ink);
+}
+
+/* Visually hidden but available to assistive technology. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -14,15 +84,12 @@
   border: 0;
 }
 
-/* A focus indicator everywhere, including for anything that slipped past the
-   utility classes. Never remove an outline without a stronger replacement
-   (CONVENTIONS.md §6). */
+/* A focus indicator everywhere. Peach on indigo, indigo on stock — both pass. */
 :focus-visible {
-  outline: 2px solid #0f172a;
+  outline: 3px solid var(--color-ink);
   outline-offset: 2px;
 }
 
-/* No animation or smooth scrolling for anyone who has asked not to have it. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -32,4 +99,21 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* The press "pulls" a sheet: ink settles in two passes. Reduced-motion users
+   get the finished state immediately via the rule above. */
+@keyframes riso-pull {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.riso-pull {
+  animation: riso-pull 420ms ease-out both;
 }

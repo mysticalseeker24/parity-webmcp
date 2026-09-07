@@ -53,7 +53,7 @@ export function IntakeForm() {
   });
 
   if (stage !== "slot_held" && stage !== "intake_complete") {
-    return <p className="text-slate-600">Hold a slot to fill in patient details.</p>;
+    return <p className="text-ink-soft">Hold a slot to fill in patient details.</p>;
   }
 
   async function submit(event: React.FormEvent) {
@@ -80,7 +80,7 @@ export function IntakeForm() {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
       <div className="flex flex-col gap-1">
-        <label htmlFor="patient_name" className="font-semibold text-slate-900">
+        <label htmlFor="patient_name" className="font-semibold text-ink">
           Patient name
         </label>
         <input
@@ -91,10 +91,10 @@ export function IntakeForm() {
           onChange={(e) => setName(e.target.value)}
           aria-invalid={errorFor("patient_name") ? true : undefined}
           aria-describedby={errorFor("patient_name") ? "patient_name-error" : undefined}
-          className="rounded border border-slate-400 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900"
+          className="rounded border-[1.5px] border-ink px-3 py-2"
         />
         {errorFor("patient_name") && (
-          <p id="patient_name-error" className="text-sm font-medium text-red-800">
+          <p id="patient_name-error" className="text-sm font-medium text-spot-deep">
             <span aria-hidden="true">✕ </span>
             {errorFor("patient_name")}
           </p>
@@ -102,12 +102,12 @@ export function IntakeForm() {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="dob" className="font-semibold text-slate-900">
+        <label htmlFor="dob" className="font-semibold text-ink">
           Date of birth
         </label>
         {/* The hint is wired with aria-describedby so it is read out, not just
             seen. A native date picker is deliberately not used here. */}
-        <p id="dob-hint" className="text-sm text-slate-700">
+        <p id="dob-hint" className="text-sm text-ink">
           Four-digit year, month, day — for example 1984-03-09.
         </p>
         <input
@@ -120,10 +120,10 @@ export function IntakeForm() {
           placeholder="1984-03-09"
           aria-describedby={errorFor("dob") ? "dob-hint dob-error" : "dob-hint"}
           aria-invalid={errorFor("dob") ? true : undefined}
-          className="rounded border border-slate-400 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900"
+          className="rounded border-[1.5px] border-ink px-3 py-2"
         />
         {errorFor("dob") && (
-          <p id="dob-error" className="text-sm font-medium text-red-800">
+          <p id="dob-error" className="text-sm font-medium text-spot-deep">
             <span aria-hidden="true">✕ </span>
             {errorFor("dob")}
           </p>
@@ -131,7 +131,7 @@ export function IntakeForm() {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="reason" className="font-semibold text-slate-900">
+        <label htmlFor="reason" className="font-semibold text-ink">
           Reason for visit
         </label>
         <textarea
@@ -140,12 +140,12 @@ export function IntakeForm() {
           rows={2}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          className="rounded border border-slate-400 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900"
+          className="rounded border-[1.5px] border-ink px-3 py-2"
         />
       </div>
 
-      <fieldset className="rounded border border-slate-300 p-3">
-        <legend className="px-1 font-semibold text-slate-900">Accommodations needed</legend>
+      <fieldset className="rounded border-[1.5px] border-ink p-3">
+        <legend className="px-1 font-semibold text-ink">Accommodations needed</legend>
         <ul className="mt-1 grid gap-2 sm:grid-cols-2">
           {ACCOMMODATION.options.map((id) => (
             <li key={id} className="flex items-center gap-2">
@@ -158,9 +158,9 @@ export function IntakeForm() {
                     e.target.checked ? [...prev, id] : prev.filter((a) => a !== id),
                   )
                 }
-                className="size-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900"
+                className="size-4"
               />
-              <label htmlFor={`acc-${id}`} className="text-slate-800">
+              <label htmlFor={`acc-${id}`} className="text-ink">
                 <span aria-hidden="true">{ACCOMMODATION_ICONS[id]} </span>
                 {ACCOMMODATION_LABELS[id]}
               </label>
@@ -170,7 +170,7 @@ export function IntakeForm() {
       </fieldset>
 
       {error && !error.field && (
-        <p className="text-sm font-medium text-red-800">
+        <p className="text-sm font-medium text-spot-deep">
           <span aria-hidden="true">✕ </span>
           {error.reason}
         </p>
@@ -180,13 +180,13 @@ export function IntakeForm() {
         <button
           type="submit"
           disabled={busy}
-          className="rounded bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+          className="rounded bg-ink px-4 py-2 font-semibold text-stock hover:bg-ink-soft disabled:opacity-60"
         >
           Save patient details
         </button>
 
         {/* Completeness in words: exactly what set_intake still needs. */}
-        <p role="status" aria-live="polite" className="text-sm text-slate-800">
+        <p role="status" aria-live="polite" className="text-sm text-ink">
           {saved && `${saved} `}
           {missing.length === 0
             ? "All required details are present."

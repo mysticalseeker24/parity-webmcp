@@ -211,23 +211,23 @@ export function Calendar() {
   }
 
   if (!providerId) {
-    return <p className="text-slate-600">Select a provider to see their availability.</p>;
+    return <p className="text-ink-soft">Select a provider to see their availability.</p>;
   }
 
   const anySlots = matrix.some((row) => row.some((slot) => slot !== null));
   if (!anySlots) {
-    return <p className="text-slate-600">This provider has no open slots in the booking window.</p>;
+    return <p className="text-ink-soft">This provider has no open slots in the booking window.</p>;
   }
 
   return (
     <div>
-      <p className="mb-2 text-sm text-slate-700">
+      <p className="mb-2 text-sm text-ink">
         Arrow keys move between open slots, Home and End jump along the row, Page Up and Page Down
         along the column, Enter holds, Escape leaves the grid.
       </p>
 
       {refusal && (
-        <p className="mb-2 flex gap-2 text-sm font-medium text-red-800">
+        <p className="mb-2 flex gap-2 text-sm font-medium text-spot-deep">
           <span aria-hidden="true">✕</span>
           <span>{refusal}</span>
         </p>
@@ -244,14 +244,14 @@ export function Calendar() {
           </caption>
           <thead>
             <tr>
-              <th scope="col" className="p-1 text-left font-semibold text-slate-700">
+              <th scope="col" className="p-1 text-left font-semibold text-ink">
                 Time
               </th>
               {SCHEDULE_DATES.map((date) => (
                 <th
                   key={date}
                   scope="col"
-                  className="whitespace-nowrap p-1 font-semibold text-slate-700"
+                  className="whitespace-nowrap p-1 font-semibold text-ink"
                 >
                   {shortDate(date)}
                 </th>
@@ -261,7 +261,7 @@ export function Calendar() {
           <tbody>
             {TIMES.map((time, row) => (
               <tr key={time}>
-                <th scope="row" className="p-1 text-left font-normal text-slate-700">
+                <th scope="row" className="p-1 text-left font-normal text-ink">
                   {time}
                 </th>
                 {SCHEDULE_DATES.map((date, col) => {
@@ -274,7 +274,7 @@ export function Calendar() {
                     return (
                       // slate-500, not slate-400: the marker is decorative but
                       // still read by sighted users, and 400 on white is ~2.6:1.
-                      <td key={date} className="border border-slate-300 p-1 text-center text-slate-500">
+                      <td key={date} className="border-[1.5px] border-ink p-1 text-center text-ink-soft">
                         <span aria-hidden="true">{taken ? "×" : "·"}</span>
                         <span className="sr-only">{taken ? "Taken" : "No slot"}</span>
                       </td>
@@ -282,7 +282,7 @@ export function Calendar() {
                   }
 
                   return (
-                    <td key={date} className="border border-slate-200 p-0">
+                    <td key={date} className="border-[1.5px] border-ink p-0">
                       <button
                         type="button"
                         data-cursor={isCursor ? "true" : undefined}
@@ -293,10 +293,10 @@ export function Calendar() {
                           void hold(slot);
                         }}
                         onFocus={() => setCursor({ row, col })}
-                        className={`w-full px-2 py-1 focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-slate-900 ${
+                        className={`w-full px-2 py-1 ${
                           held
-                            ? "bg-emerald-700 font-semibold text-white"
-                            : "bg-white text-slate-900 hover:bg-slate-200"
+                            ? "bg-ink font-semibold text-stock"
+                            : "bg-stock text-ink hover:bg-stock-deep"
                         }`}
                       >
                         {/* Held state is text, not just the green fill. */}
@@ -318,7 +318,7 @@ export function Calendar() {
 
       {/* The focused cell, spoken. A focus ring alone tells a screen-reader
           user nothing about which date and time they have landed on. */}
-      <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-700">
+      <p role="status" aria-live="polite" className="mt-2 text-sm text-ink">
         {message}
       </p>
     </div>

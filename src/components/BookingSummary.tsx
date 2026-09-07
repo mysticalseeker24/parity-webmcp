@@ -60,7 +60,7 @@ export function BookingSummary() {
   }
 
   return (
-    <div className="flex flex-col gap-3 text-slate-800">
+    <div className="flex flex-col gap-3 text-ink">
       <p>
         <span className="font-semibold">Stage: </span>
         <span data-testid="stage">{STAGE_LABELS[stage] ?? stage}</span>
@@ -98,7 +98,7 @@ export function BookingSummary() {
       )}
 
       {booking && bookedSlot && (
-        <p className="rounded border border-emerald-700 bg-emerald-50 p-3">
+        <p className="rounded border-[1.5px] border-ink bg-stock-deep p-3">
           <span className="font-semibold">Confirmed: </span>
           {slotLabel(bookedSlot)} with {findProvider(booking.providerId)?.name}. Reference{" "}
           {booking.id}.
@@ -112,18 +112,18 @@ export function BookingSummary() {
             id="confirm-booking"
             onClick={() => void confirm()}
             disabled={busy}
-            className="rounded bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+            className="rounded bg-ink px-4 py-2 font-semibold text-stock hover:bg-ink-soft disabled:opacity-60"
           >
             Confirm booking
           </button>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-ink-soft">
             Confirming needs your approval on this page; the agent cannot give it.
           </p>
         </div>
       )}
 
       {confirmMessage && (
-        <p role="status" aria-live="polite" className="text-sm font-medium text-slate-900">
+        <p role="status" aria-live="polite" className="text-sm font-medium text-ink">
           {confirmMessage}
         </p>
       )}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { executeAsHuman, getRegistry } from "../lib/registry";
 import { isRefusal, type ToolResult } from "../lib/result";
+import { onPaletteRequest, type PaletteRequest } from "../lib/paletteBridge";
 import { fieldsFromSchema, valuesToArgs, type FormField } from "../lib/schemaForm";
 import { readInputSchema, type JsonSchema } from "../lib/webmcpInterop";
 import type { ToolGroup } from "../lib/defineTool";
@@ -121,8 +122,10 @@ export function CommandPalette() {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [result, setResult] = useState<ToolResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [heardAs, setHeardAs] = useState<string | null>(null);
+  const [pending, setPending] = useState<PaletteRequest | null>(null);
 
-  const { tools, viaBrowser } = useLiveTools(open);
+  const { tools, viaBrowser } = useLiveTools(open || pending !== null);
   const inputRef = useRef<HTMLInputElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
 
@@ -139,8 +142,30 @@ export function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
+    if (open && !selected) inputRef.current?.focus();
+  }, [open, selected]);
+
+  // Voice asks for a form to be opened, pre-filled. It never asks for a tool to
+  // be run — the user still presses Run (see lib/paletteBridge.ts).
+  useEffect(() => onPaletteRequest(setPending), []);
+
+  useEffect(() => {
+    if (!pending) return;
+    const tool = tools.find((t) => t.name === pending.tool);
+    // Wait for the live set to arrive rather than dropping the request.
+    if (!tool) return;
+
+    openerRef.current = document.activeElement as HTMLElement;
+    setOpen(true);
+    setResult(null);
+    setHeardAs(pending.heardAs ?? null);
+    setSelected(tool);
+
+    const initial: Record<string, unknown> = {};
+    for (const field of tool.fields) if (field.kind === "checkboxGroup") initial[field.name] = [];
+    setValues({ ...initial, ...pending.values });
+    setPending(null);
+  }, [pending, tools]);
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -168,6 +193,7 @@ export function CommandPalette() {
     setValues({});
     setResult(null);
     setQuery("");
+    setHeardAs(null);
     // Restore focus to whatever opened it — never drop focus to <body>.
     openerRef.current?.focus();
   }
@@ -175,6 +201,7 @@ export function CommandPalette() {
   function choose(tool: PaletteTool) {
     setSelected(tool);
     setResult(null);
+    setHeardAs(null);
     const initial: Record<string, unknown> = {};
     for (const field of tool.fields) if (field.kind === "checkboxGroup") initial[field.name] = [];
     setValues(initial);
@@ -197,7 +224,7 @@ export function CommandPalette() {
           openerRef.current = e.currentTarget;
           setOpen(true);
         }}
-        className="rounded border border-slate-400 bg-white px-3 py-1.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+        className="rounded border-[1.5px] border-ink bg-stock px-3 py-1.5 text-sm font-semibold text-ink hover:bg-stock-deep"
       >
         Commands <kbd className="ml-1 font-mono text-xs">Ctrl K</kbd>
       </button>
@@ -241,21 +268,21 @@ export function CommandPalette() {
           inputRef.current?.focus();
         }
       }}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4 pt-16"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/40 p-4 pt-16"
     >
-      <div className="w-full max-w-2xl rounded-lg border border-slate-400 bg-white p-4 shadow-xl">
+      <div className="w-full max-w-2xl border-[1.5px] border-ink bg-stock p-4 ">
         <div className="flex items-baseline justify-between gap-4">
-          <h2 id="palette-title" className="text-lg font-bold text-slate-900">
+          <h2 id="palette-title" className="text-lg font-bold text-ink">
             Commands
           </h2>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-ink-soft">
             {viaBrowser ? "Reading document.modelContext.getTools()" : "Reading the local registry"}
           </p>
         </div>
 
         {!selected ? (
           <>
-            <label htmlFor="palette-search" className="mt-3 block font-semibold text-slate-900">
+            <label htmlFor="palette-search" className="mt-3 block font-semibold text-ink">
               Search available commands
             </label>
             <input
@@ -271,11 +298,11 @@ export function CommandPalette() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onSearchKeyDown}
-              className="mt-1 w-full rounded border border-slate-400 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900"
+              className="mt-1 w-full rounded border-[1.5px] border-ink px-3 py-2"
             />
 
             {/* The count is announced, not just displayed. */}
-            <p id="palette-count" role="status" aria-live="polite" className="mt-1 text-sm text-slate-700">
+            <p id="palette-count" role="status" aria-live="polite" className="mt-1 text-sm text-ink">
               {matches.length} command{matches.length === 1 ? "" : "s"} available
             </p>
 
@@ -285,7 +312,7 @@ export function CommandPalette() {
                 if (inGroup.length === 0) return null;
                 return (
                   <li key={group} role="presentation">
-                    <p role="presentation" className="mt-2 px-1 text-xs font-bold uppercase tracking-wide text-slate-600">
+                    <p role="presentation" className="mt-2 px-1 text-xs font-bold uppercase tracking-wide text-ink-soft">
                       {GROUP_LABELS[group] ?? group}
                     </p>
                     <ul role="group" aria-label={GROUP_LABELS[group] ?? group}>
@@ -300,11 +327,11 @@ export function CommandPalette() {
                             aria-selected={active}
                             onClick={() => choose(tool)}
                             className={`cursor-pointer rounded px-2 py-1.5 ${
-                              active ? "bg-slate-900 text-white" : "text-slate-900"
+                              active ? "bg-ink text-stock" : "text-ink"
                             }`}
                           >
                             <span className="font-semibold">{tool.label}</span>
-                            <span className={active ? "text-slate-200" : "text-slate-600"}>
+                            <span className={active ? "text-stock" : "text-ink-soft"}>
                               {" · "}
                               <code className="font-mono text-xs">{tool.name}</code>
                               {!tool.known && " · not in the local map"}
@@ -327,12 +354,23 @@ export function CommandPalette() {
             className="mt-3 flex flex-col gap-3"
           >
             <div>
-              <h3 className="font-bold text-slate-900">{selected.label}</h3>
-              <p className="text-sm text-slate-700">{selected.description}</p>
+              <h3 className="font-display font-bold uppercase tracking-wide text-ink">
+                {selected.label}
+              </h3>
+              <p className="text-sm text-ink">{selected.description}</p>
             </div>
 
+            {/* Voice opened this form. Show what was heard, so a mishearing is
+                visible before anything runs rather than after. */}
+            {heardAs && (
+              <p className="riso-panel-inset px-3 py-2 text-sm text-ink" data-testid="palette-heard">
+                <span aria-hidden="true">🎙 </span>
+                Heard “{heardAs}”. Check the values, then press Run.
+              </p>
+            )}
+
             {selected.fields.length === 0 && (
-              <p className="text-sm text-slate-700">This command takes no options.</p>
+              <p className="text-sm text-ink">This command takes no options.</p>
             )}
 
             {selected.fields.map((field) => (
@@ -348,7 +386,7 @@ export function CommandPalette() {
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+                className="rounded bg-ink px-4 py-2 font-semibold text-stock hover:bg-ink-soft disabled:opacity-60"
               >
                 Run {selected.label}
               </button>
@@ -358,27 +396,27 @@ export function CommandPalette() {
                   setSelected(null);
                   inputRef.current?.focus();
                 }}
-                className="rounded border border-slate-400 px-4 py-2 font-semibold text-slate-900 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+                className="rounded border-[1.5px] border-ink px-4 py-2 font-semibold text-ink hover:bg-stock-deep"
               >
                 Back to commands
               </button>
             </div>
 
             {result && (
-              <div role="status" aria-live="polite" className="rounded border border-slate-300 bg-slate-50 p-3 text-sm">
+              <div role="status" aria-live="polite" className="rounded border-[1.5px] border-ink bg-stock-deep p-3 text-sm">
                 {isRefusal(result) ? (
                   <>
-                    <p className="font-semibold text-red-800">
+                    <p className="font-semibold text-spot-deep">
                       <span aria-hidden="true">✕ </span>
                       {result.kind.replace(/_/g, " ")}
                     </p>
-                    <p className="text-slate-900">{result.reason}</p>
+                    <p className="text-ink">{result.reason}</p>
                     {result.next && (
-                      <p className="mt-1 text-slate-800">Next: run “{result.next}”.</p>
+                      <p className="mt-1 text-ink">Next: run “{result.next}”.</p>
                     )}
                   </>
                 ) : (
-                  <p className="text-slate-900">
+                  <p className="text-ink">
                     <span aria-hidden="true">✓ </span>
                     {result.human_summary}
                   </p>
@@ -388,12 +426,12 @@ export function CommandPalette() {
           </form>
         )}
 
-        <div className="mt-3 flex justify-between border-t border-slate-200 pt-2 text-xs text-slate-600">
+        <div className="mt-3 flex justify-between border-t border-ink pt-2 text-xs text-ink-soft">
           <span>Arrows move · Enter opens · Escape closes</span>
           <button
             type="button"
             onClick={close}
-            className="font-semibold underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+            className="font-semibold underline"
           >
             Close
           </button>
@@ -419,8 +457,8 @@ function SchemaField({
   if (field.kind === "checkboxGroup") {
     const current = Array.isArray(value) ? (value as string[]) : [];
     return (
-      <fieldset className="rounded border border-slate-300 p-2">
-        <legend className="px-1 text-sm font-semibold text-slate-900">
+      <fieldset className="rounded border-[1.5px] border-ink p-2">
+        <legend className="px-1 text-sm font-semibold text-ink">
           {field.label}
           {requiredMark}
         </legend>
@@ -440,7 +478,7 @@ function SchemaField({
                 }
                 className="size-4"
               />
-              <label htmlFor={`${id}-${option}`} className="text-sm text-slate-800">
+              <label htmlFor={`${id}-${option}`} className="text-sm text-ink">
                 {option.replace(/_/g, " ")}
               </label>
             </li>
@@ -460,7 +498,7 @@ function SchemaField({
           onChange={(e) => onChange(e.target.checked)}
           className="size-4"
         />
-        <label htmlFor={id} className="font-semibold text-slate-900">
+        <label htmlFor={id} className="font-semibold text-ink">
           {field.label}
           {requiredMark}
         </label>
@@ -470,7 +508,7 @@ function SchemaField({
 
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-semibold text-slate-900">
+      <label htmlFor={id} className="font-semibold text-ink">
         {field.label}
         {requiredMark}
       </label>
@@ -479,7 +517,7 @@ function SchemaField({
           id={id}
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
-          className="rounded border border-slate-400 px-3 py-2"
+          className="rounded border-[1.5px] border-ink px-3 py-2"
         >
           <option value="">Choose…</option>
           {field.options.map((option) => (
@@ -494,7 +532,7 @@ function SchemaField({
           type={field.kind === "number" ? "number" : "text"}
           value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
           onChange={(e) => onChange(e.target.value)}
-          className="rounded border border-slate-400 px-3 py-2"
+          className="rounded border-[1.5px] border-ink px-3 py-2"
         />
       )}
     </div>

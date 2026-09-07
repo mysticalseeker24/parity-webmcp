@@ -116,29 +116,29 @@ export function GrantCard({ tool = "confirm_booking" }: { tool?: string }) {
       aria-describedby="grant-body"
       ref={cardRef}
       tabIndex={-1}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 p-4 pt-20"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/40 p-4 pt-20"
     >
-      <div className="w-full max-w-lg rounded-lg border-2 border-slate-900 bg-white p-5 shadow-xl">
-        <h2 id="grant-title" className="text-xl font-bold text-slate-900">
+      <div className="w-full max-w-lg border-[1.5px] border-slate-900 bg-stock p-5 ">
+        <h2 id="grant-title" className="text-xl font-bold text-ink">
           Approval required
         </h2>
 
-        <p id="grant-body" className="mt-2 text-slate-800">
+        <p id="grant-body" className="mt-2 text-ink">
           An action wants to run <strong>Confirm booking</strong>. This commits a real appointment.
           Only you can approve it.
         </p>
 
         {/* Every argument, in full. Approving a summary is not consent. */}
-        <dl className="mt-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm">
+        <dl className="mt-3 rounded border-[1.5px] border-ink bg-stock-deep p-3 text-sm">
           <div className="flex gap-2">
-            <dt className="font-semibold text-slate-900">Tool</dt>
+            <dt className="font-semibold text-ink">Tool</dt>
             <dd>
               <code className="font-mono">{grant.tool}</code>
             </dd>
           </div>
           {Object.entries(grant.args).map(([key, value]) => (
             <div key={key} className="mt-1 flex gap-2">
-              <dt className="font-semibold text-slate-900">{key}</dt>
+              <dt className="font-semibold text-ink">{key}</dt>
               <dd>
                 <code className="font-mono break-all">{formatValue(value)}</code>
               </dd>
@@ -146,7 +146,7 @@ export function GrantCard({ tool = "confirm_booking" }: { tool?: string }) {
           ))}
         </dl>
 
-        <p className="mt-3 text-sm text-slate-800" data-testid="grant-countdown">
+        <p className="mt-3 text-sm text-ink" data-testid="grant-countdown">
           {dwellOver ? (
             <>This request expires in {secondsLeft} seconds.</>
           ) : (
@@ -161,7 +161,7 @@ export function GrantCard({ tool = "confirm_booking" }: { tool?: string }) {
         </p>
 
         {error && (
-          <p role="alert" className="mt-3 text-sm font-medium text-red-800">
+          <p role="alert" className="mt-3 text-sm font-medium text-spot-deep">
             <span aria-hidden="true">✕ </span>
             {error}
           </p>
@@ -173,7 +173,7 @@ export function GrantCard({ tool = "confirm_booking" }: { tool?: string }) {
             disabled={!dwellOver}
             onClick={handleApprove}
             data-testid="grant-approve"
-            className="rounded bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded bg-ink px-4 py-2 font-semibold text-stock hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
           >
             Approve{!dwellOver && ` (${(dwellLeft / 1000).toFixed(1)}s)`}
           </button>
@@ -182,13 +182,13 @@ export function GrantCard({ tool = "confirm_booking" }: { tool?: string }) {
             type="button"
             onClick={() => deny(grant.id)}
             data-testid="grant-deny"
-            className="rounded border border-slate-500 px-4 py-2 font-semibold text-slate-900 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+            className="rounded border-[1.5px] border-ink px-4 py-2 font-semibold text-ink hover:bg-stock-deep"
           >
             Deny
           </button>
         </div>
 
-        <p className="mt-3 text-xs text-slate-600">
+        <p className="mt-3 text-xs text-ink-soft">
           The time you take to approve is recorded, so an approval that was not really yours is at
           least visible afterwards. A page cannot tell an automated click from yours — see the
           audit trail.
