@@ -435,8 +435,10 @@ describe("two-phase confirm_booking", () => {
     approveAsHuman(allGrants()[0]!.id);
     await confirmBooking.run({ slot_id: slotId });
 
-    const names = (await document.modelContext!.getTools()).map((t) => t.name);
-    expect(names).toEqual(["get_booking_state", "list_accommodations"]);
+    const names = (await document.modelContext!.getTools()).map((t) => t.name).sort();
+    // cancel_booking takes its place: reversing a booking is its own gated
+    // action, not an undo of the one that created it.
+    expect(names).toEqual(["cancel_booking", "get_booking_state", "list_accommodations"]);
   });
 });
 

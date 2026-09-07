@@ -8,6 +8,13 @@ import { selectedProvider } from "./shared";
 
 const MAX_SLOTS = 8;
 
+/** "09:30" + 60 → "10:30". Slots never cross midnight in this fixture. */
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = (h ?? 0) * 60 + (m ?? 0) + minutes;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 /**
  * Open slots for the selected provider. Registers only once a provider is
  * selected, and stays live through the held stages so a conflict at confirm
@@ -79,23 +86,39 @@ export const getAvailability = defineTool({
     }
 
     const taken = new Set(state.takenSlotIds);
-    const matches = slotsForProvider(provider.id).filter((slot) => {
+    const companion = state.companion;
+    const allSlots = slotsForProvider(provider.id);
+    const matches = allSlots.filter((slot) => {
       if (taken.has(slot.id)) return false;
       if (slot.date < from || slot.date > to) return false;
       if (slot.duration_min < input.duration_min) return false;
       const hour = Number(slot.time.slice(0, 2));
       if (input.time_of_day === "morning" && hour >= 12) return false;
       if (input.time_of_day === "afternoon" && hour < 12) return false;
+      // The companion has to be able to attend the whole appointment, not just
+      // its start — set_companion_constraint promises this filtering, so it has
+      // to actually happen here.
+      if (companion?.available_from && companion.available_to) {
+        const end = addMinutes(slot.time, slot.duration_min);
+        if (slot.time < companion.available_from || end > companion.available_to) return false;
+      }
       return true;
     });
 
     state.markAvailabilityFetched();
 
     if (matches.length === 0) {
+      // Name the companion window when it is the thing doing the excluding —
+      // "no slots" is unhelpful if a constraint the user forgot is the cause.
+      const blamesCompanion =
+        companion?.available_from !== undefined &&
+        allSlots.some((s) => s.date >= from && s.date <= to && !taken.has(s.id));
       return refuse(
         "unavailable",
-        `${provider.name} has no open slots in that range. Widen the dates or change time_of_day.`,
-        { next: "get_availability" },
+        blamesCompanion
+          ? `${provider.name} has no slots that fit entirely inside the companion window ${companion.available_from}–${companion.available_to}. Widen the window or the dates.`
+          : `${provider.name} has no open slots in that range. Widen the dates or change time_of_day.`,
+        { next: blamesCompanion ? "set_companion_constraint" : "get_availability" },
       );
     }
 

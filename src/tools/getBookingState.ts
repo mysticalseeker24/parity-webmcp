@@ -44,13 +44,19 @@ export const getBookingState = defineTool({
     const missing = intakeMissing(state.intake);
 
     const live: Partial<Record<ToolGroup, string[]>> = {};
-    const unavailable: { tool: string; reason_code: string; reason: string; unlock_by: string }[] = [];
+    // Terse codes, not prose (PROJECT_SPEC.md §5). `reason_code` + `unlock_by`
+    // is the whole actionable signal — the code says what is wrong and the
+    // unlock says which tool fixes it — and it is what keeps this payload under
+    // the 1.5K budget as the tool set grows. The human sentence for each code
+    // lives once in `lib/reasons.ts` and is what the live region announces, so
+    // #262's context reaches both surfaces without being duplicated here.
+    const unavailable: { tool: string; reason_code: string; unlock_by: string }[] = [];
     for (const tool of allTools) {
       if (tool.available(state)) {
         (live[tool.group] ??= []).push(tool.name);
       } else {
-        const why = tool.unavailableReason(state);
-        unavailable.push({ tool: tool.name, ...why });
+        const { reason_code, unlock_by } = tool.unavailableReason(state);
+        unavailable.push({ tool: tool.name, reason_code, unlock_by });
       }
     }
 
