@@ -300,7 +300,16 @@ try {
     /WebMCP: detected/.test(r.verdictText),
     JSON.stringify(r.verdictText),
   );
-  const BROWSING = ["find_providers", "get_booking_state", "list_accommodations", "select_provider"];
+  // getTools() is alphabetical. Tier 2 adds check_coverage and
+  // set_companion_constraint to the browsing stage.
+  const BROWSING = [
+    "check_coverage",
+    "find_providers",
+    "get_booking_state",
+    "list_accommodations",
+    "select_provider",
+    "set_companion_constraint",
+  ];
   check(
     "getTools() returns exactly the browsing-stage tools",
     JSON.stringify(r.toolNames) === JSON.stringify(BROWSING),
@@ -334,14 +343,19 @@ try {
     JSON.stringify(r.result?.data?.live) ===
       JSON.stringify({
         orient: ["get_booking_state", "list_accommodations"],
-        search: ["find_providers", "select_provider"],
+        search: [
+          "find_providers",
+          "select_provider",
+          "check_coverage",
+          "set_companion_constraint",
+        ],
       }),
     JSON.stringify(r.result?.data?.live),
   );
   check(
     "unavailable[] explains every non-live tool (#262)",
     Array.isArray(r.result?.data?.unavailable) &&
-      r.result.data.unavailable.length === 4 &&
+      r.result.data.unavailable.length === 7 &&
       r.result.data.unavailable.every((u) => u.tool && u.reason_code && u.unlock_by),
     JSON.stringify(r.result?.data?.unavailable?.map((u) => u.reason_code)),
   );

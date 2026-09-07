@@ -36,10 +36,12 @@ describe("registry — the live set is a pure function of state", () => {
   it("registers exactly the browsing-stage tools on start", () => {
     registry = startRegistry(TOOLS);
     expect(names()).toEqual([
+      "check_coverage",
       "find_providers",
       "get_booking_state",
       "list_accommodations",
       "select_provider",
+      "set_companion_constraint",
     ]);
     expect([...store().liveTools]).toEqual(names());
   });
@@ -49,7 +51,13 @@ describe("registry — the live set is a pure function of state", () => {
 
     mc!.clearLog();
     store().selectProvider("p01");
-    expect(mc!.log).toEqual([{ op: "register", name: "get_availability" }]);
+    // check_coverage is a browsing-stage question; get_availability arrives.
+    expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name)).toEqual([
+      "get_availability",
+    ]);
+    expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name)).toEqual([
+      "check_coverage",
+    ]);
 
     mc!.clearLog();
     store().markAvailabilityFetched();
@@ -57,12 +65,15 @@ describe("registry — the live set is a pure function of state", () => {
 
     mc!.clearLog();
     store().holdSlot({ slotId: "s1", providerId: "p01", expiresAt: Date.now() + HOLD_TTL_MS });
-    // find_providers and select_provider leave; set_intake arrives.
     expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name).sort()).toEqual([
       "find_providers",
       "select_provider",
+      "set_companion_constraint",
     ]);
-    expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name)).toEqual(["set_intake"]);
+    expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name).sort()).toEqual([
+      "release_slot",
+      "set_intake",
+    ]);
 
     mc!.clearLog();
     store().setIntake({ patient_name: "A", dob: "1990-01-01", reason: "r" });
@@ -73,6 +84,7 @@ describe("registry — the live set is a pure function of state", () => {
     store().releaseHold();
     expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name).sort()).toEqual([
       "confirm_booking",
+      "release_slot",
       "set_intake",
     ]);
   });
@@ -108,7 +120,22 @@ describe("registry — the live set is a pure function of state", () => {
       intake: {},
     });
     check();
-    expect(names()).toEqual(["get_booking_state", "list_accommodations"]);
+    expect(names()).toEqual(["cancel_booking", "get_booking_state", "list_accommodations"]);
+  });
+
+  it("stays within the cap in the fullest stage — a zero-result search", () => {
+    registry = startRegistry(TOOLS);
+    // explain_no_results only exists after a search that matched nobody, which
+    // is the browsing stage at its most crowded.
+    store().recordSearch({
+      specialty: "audiology",
+      accommodations: ["wheelchair_accessible"],
+      result_ids: [],
+      total_matches: 0,
+      eliminated_by: { accommodations: 3 },
+    });
+    expect(names()).toContain("explain_no_results");
+    expect(names().length).toBe(MAX_LIVE_TOOLS);
   });
 
   it("fires toolchange so the agent and the palette see the same diff", () => {
@@ -192,6 +219,27 @@ describe("registry — audit and actor attribution", () => {
     expect(store().audit.at(-1)).toMatchObject({ tool: "get_booking_state", actor: "human" });
   });
 
+  it("does not let a concurrent call steal another tool's human mark", async () => {
+    registry = startRegistry(TOOLS);
+
+    // Observed live: executeAsHuman marks the next call and then awaits
+    // getTools(); a different tool executing during that await consumed the
+    // mark and was mislabelled "human". The mark is keyed by tool name so the
+    // wrong call cannot claim it.
+    setNextActor("human", "list_accommodations");
+    await registry.execute("get_booking_state", {});
+    expect(store().audit.at(-1)).toMatchObject({
+      tool: "get_booking_state",
+      actor: "agent",
+    });
+
+    await registry.execute("list_accommodations", {});
+    expect(store().audit.at(-1)).toMatchObject({
+      tool: "list_accommodations",
+      actor: "human",
+    });
+  });
+
   it("refuses an unregistered tool with its unavailable reason", async () => {
     registry = startRegistry(TOOLS);
     const result = await registry.execute("confirm_booking", { slot_id: "s1" });
@@ -208,10 +256,12 @@ describe("registry — without WebMCP", () => {
 
     expect(registry.hasModelContext).toBe(false);
     expect(registry.getLiveTools().map((t) => t.name).sort()).toEqual([
+      "check_coverage",
       "find_providers",
       "get_booking_state",
       "list_accommodations",
       "select_provider",
+      "set_companion_constraint",
     ]);
 
     reachAvailability();
