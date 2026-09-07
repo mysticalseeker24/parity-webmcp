@@ -1,6 +1,7 @@
 import { bookingStore, type AuditEntry, type BookingStore } from "../store";
 import { getRegistry } from "./registry";
 import { REASONS, toolLostSentence, type ReasonCode } from "./reasons";
+import { stageSentence } from "./stageFocus";
 import { isToolResult } from "./result";
 import type { StoreApi } from "zustand/vanilla";
 
@@ -92,8 +93,16 @@ export function startAnnouncer(
 ): () => void {
   let lastAuditId = store.getState().audit.at(-1)?.id ?? null;
   let lastChangeAt = store.getState().lastToolChange?.at ?? null;
+  let lastStage = store.getState().stage;
 
   return store.subscribe((state) => {
+    // Focus moves to the new stage's primary control; say where it went, or a
+    // screen-reader user hears a control read out with no idea why.
+    if (state.stage !== lastStage) {
+      lastStage = state.stage;
+      onAnnounce({ text: stageSentence(state.stage), politeness: "polite" });
+    }
+
     const latest = state.audit.at(-1);
     if (latest && latest.id !== lastAuditId) {
       lastAuditId = latest.id;

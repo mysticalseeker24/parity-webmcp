@@ -2,6 +2,25 @@ import { bookingStore, newId, type BookingStore } from "../store";
 import type { StoreApi } from "zustand/vanilla";
 
 /**
+ * ─── Timer hygiene audit (CONVENTIONS.md §8: "timers are cleaned up") ────────
+ *
+ * Every `setTimeout` / `setInterval` in `src/`, and what clears it. A leaked
+ * timer here does not merely waste a tick — it unregisters a tool underneath
+ * the user, which in a demo looks exactly like WebMCP being broken.
+ *
+ * | # | Where | What | Cleared by |
+ * |---|---|---|---|
+ * | 1 | `lib/timers.ts` (this file) | hold expiry, 10 min | `clearHoldTimer()` from `startHoldTimer` (replace), `confirm_booking` (commit and conflict), `undo.performUndo` (restore), and itself on fire |
+ * | 2 | `lib/grants.ts` `mint()` | grant expiry, 120 s | `clearGrantTimer()` via `deny`/`revoke`/`consume`/`resetGrants`, and itself on fire |
+ * | 3 | `components/BookingSummary.tsx` | 1 s countdown tick | `clearInterval` in the effect's cleanup; re-armed only while a hold exists |
+ * | 4 | `components/GrantCard.tsx` | 200 ms countdown tick | `clearInterval` in the effect's cleanup; effect is keyed on the grant, so it stops when the card closes |
+ * | 5 | `components/LiveRegion.tsx` | `requestAnimationFrame`, not a timer | fires once on the next frame; nothing to clear |
+ *
+ * Enforced rather than trusted: every timer test asserts `vi.getTimerCount()`
+ * is 0 on teardown, so a leak fails the suite rather than the demo.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  * Hold expiry, owned here rather than by a component (CONVENTIONS.md §8).
  *
  * The hold has to expire whether or not anything is mounted: the registry must

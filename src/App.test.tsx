@@ -69,6 +69,7 @@ describe("App shell", () => {
       "3. Pick a time",
       "4. Patient details",
       "What just happened",
+      "Activity trail",
       "Live tools",
     ]);
   });
@@ -122,7 +123,9 @@ describe("the whole booking, keyboard only", () => {
     confirm.focus();
     await user.keyboard("{Enter}");
     expect(store().booking).toBeNull();
-    expect(await screen.findByText(/must approve/)).toBeDefined();
+    // The grant card takes over: approval is a separate, human-only step.
+    expect(await screen.findByRole("alertdialog")).toBeDefined();
+    expect((await screen.findAllByText(/must approve/)).length).toBeGreaterThan(0);
   }, 30_000);
 });
 
@@ -140,7 +143,9 @@ describe("provider list", () => {
     const button = await screen.findByRole("button", { name: /^Select Dr\. Teodora/ });
     await user.click(button);
 
-    const error = await screen.findByText(/does not offer ASL interpreter/);
+    // Scoped: the audit trail legitimately shows the same reason text.
+    const results = screen.getByRole("region", { name: "2. Choose a provider" });
+    const error = await within(results).findByText(/does not offer ASL interpreter/);
     expect(button.getAttribute("aria-describedby")).toBe(error.closest("p")!.id);
     expect(store().stage).toBe("browsing");
   });
@@ -169,7 +174,8 @@ describe("intake form", () => {
     await user.click(screen.getByRole("button", { name: "Save patient details" }));
 
     const dob = screen.getByLabelText("Date of birth");
-    expect(await screen.findByText(/must be ISO 8601/)).toBeDefined();
+    const intake = screen.getByRole("region", { name: "4. Patient details" });
+    expect(await within(intake).findByText(/must be ISO 8601/)).toBeDefined();
     expect(dob.getAttribute("aria-invalid")).toBe("true");
     expect(dob.getAttribute("aria-describedby")).toMatch(/dob-error/);
   });

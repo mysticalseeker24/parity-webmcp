@@ -1,6 +1,7 @@
 import { bookingStore, newId, type Actor, type BookingState, type BookingStore } from "../store";
 import type { AnyDefinedTool } from "./defineTool";
 import { isToolResult, type ToolResult } from "./result";
+import { captureInverse } from "./undo";
 import { encodeToolArgs, parseToolResult } from "./webmcpInterop";
 import type { StoreApi } from "zustand/vanilla";
 
@@ -132,12 +133,38 @@ export function startRegistry(
     });
   }
 
+  /**
+   * Every execution passes through here, whoever called it, so the undo stack
+   * cannot miss an action — including one the agent took. The inverse is
+   * captured before the call and committed only if the call succeeded: a
+   * refusal changed nothing, and offering to undo it would make the button lie.
+   */
+  function withUndo<T extends ToolResult>(
+    tool: AnyDefinedTool,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const commit = captureInverse(tool.name, store);
+    return run().then((result) => {
+      if (commit && result.ok) commit();
+      return result;
+    });
+  }
+
   function register(tool: AnyDefinedTool): void {
     const controller = new AbortController();
     registered.set(tool.name, { tool, controller });
     if (!modelContext) return;
     const mcTool = tool.toModelContextTool((called, input, result) => {
       recordAudit(called, takeNextActor(), input, result);
+    });
+    // The browser calls the tool's closure directly, so the undo capture has to
+    // wrap that closure rather than sit in registry.execute — otherwise an
+    // agent's action, or a palette call routed through executeTool, would be
+    // invisible to undo.
+    const inner = mcTool.execute;
+    mcTool.execute = (input, options) => withUndo(tool, async () => {
+      const result = await inner(input, options);
+      return result as ToolResult;
     });
     void modelContext.registerTool(mcTool, { signal: controller.signal }).catch((error: unknown) => {
       // A failed registration must never be mistaken for a live tool.
@@ -219,7 +246,7 @@ export function startRegistry(
         if (tool) recordAudit(tool, actor, input, result);
         return result;
       }
-      const result = await entry.tool.run(input);
+      const result = await withUndo(entry.tool, () => entry.tool.run(input));
       recordAudit(entry.tool, actor, input, result);
       return result;
     },

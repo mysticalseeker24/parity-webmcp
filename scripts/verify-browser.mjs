@@ -99,6 +99,10 @@ async function cdp(expression) {
     ws.addEventListener("open", r, { once: true });
     ws.addEventListener("error", j, { once: true });
   });
+  // After the socket has served its purpose, a late error event (Chrome being
+  // torn down) must not become an unhandled rejection and a nonzero exit on an
+  // otherwise passing run.
+  ws.addEventListener("error", () => {});
 
   const result = await new Promise((res, rej) => {
     ws.addEventListener("message", (ev) => {
@@ -262,7 +266,14 @@ const proc = spawn(
 );
 
 try {
-  const r = await cdp(PROBE);
+  // The first evaluate occasionally lands while the page is still committing
+  // its first render, and comes back undefined. One retry rather than a longer
+  // fixed wait, so the common case stays fast.
+  let r = await cdp(PROBE);
+  if (!r || typeof r !== "object") {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    r = await cdp(PROBE);
+  }
   if (!r || typeof r !== "object") {
     throw new Error(`probe returned ${JSON.stringify(r)} — run with VERIFY_DEBUG=1 to see the raw CDP reply`);
   }
@@ -390,4 +401,10 @@ console.log(
     ? "\nAll browser checks passed.\n"
     : `\n${failures.length} browser check(s) failed.\n`,
 );
-process.exit(failures.length === 0 ? 0 : 1);
+
+// Chrome and the socket are being torn down; a stray error from either must not
+// turn a passing run into a nonzero exit.
+process.on("unhandledRejection", () => {});
+process.on("uncaughtException", () => {});
+process.exitCode = failures.length === 0 ? 0 : 1;
+setImmediate(() => process.exit(process.exitCode));
