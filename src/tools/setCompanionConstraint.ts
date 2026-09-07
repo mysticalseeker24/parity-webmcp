@@ -31,14 +31,17 @@ export const setCompanionConstraint = defineTool({
     available_to: z.string().describe("Latest time the companion can attend (HH:MM)"),
   }),
   voiceAliases: ["my carer can come", "companion times"],
-  available: (state) => state.stage === "browsing" || state.stage === "provider_selected",
+  // Same home as the transport window: both are "who is coming and how",
+  // settled once a provider is chosen and before times are picked.
+  available: (state) => state.stage === "provider_selected" && !state.hasFetchedAvailability,
   unavailableReason: (state) => {
-    const code = state.stage === "booked" ? "already_booked" : "hold_active";
-    return {
-      reason_code: code,
-      reason: REASONS[code],
-      unlock_by: code === "hold_active" ? "release_slot" : "",
-    };
+    if (state.stage === "booked") {
+      return { reason_code: "already_booked", reason: REASONS.already_booked, unlock_by: "" };
+    }
+    if (state.stage === "browsing") {
+      return { reason_code: "no_provider", reason: REASONS.no_provider, unlock_by: "select_provider" };
+    }
+    return { reason_code: "picking_times", reason: REASONS.picking_times, unlock_by: "release_slot" };
   },
   execute: (input) => {
     for (const [field, value] of [

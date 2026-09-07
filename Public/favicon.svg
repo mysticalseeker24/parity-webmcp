@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The Parity mark, drawn tight to the box. The PNG derived from the
+       source art keeps that art's generous padding, which leaves the mark a
+       few pixels wide at a 16px tab size — this fills the space instead. -->
+  <rect width="64" height="64" fill="#f4efe2"/>
+  <g fill="#1e2a4a">
+    <rect x="4" y="18" width="34" height="9" rx="4.5"/>
+    <rect x="4" y="37" width="34" height="9" rx="4.5"/>
+    <circle cx="44" cy="32" r="16"/>
+  </g>
+</svg>

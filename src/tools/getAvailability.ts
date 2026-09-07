@@ -87,6 +87,7 @@ export const getAvailability = defineTool({
 
     const taken = new Set(state.takenSlotIds);
     const companion = state.companion;
+    const transport = state.transport;
     const allSlots = slotsForProvider(provider.id);
     const matches = allSlots.filter((slot) => {
       if (taken.has(slot.id)) return false;
@@ -102,6 +103,12 @@ export const getAvailability = defineTool({
         const end = addMinutes(slot.time, slot.duration_min);
         if (slot.time < companion.available_from || end > companion.available_to) return false;
       }
+      // Same rule for paratransit: a slot you can reach but cannot leave is
+      // not a slot, so the appointment must finish before the return pickup.
+      if (transport) {
+        const end = addMinutes(slot.time, slot.duration_min);
+        if (slot.time < transport.earliest_pickup || end > transport.latest_return) return false;
+      }
       return true;
     });
 
@@ -110,15 +117,27 @@ export const getAvailability = defineTool({
     if (matches.length === 0) {
       // Name the companion window when it is the thing doing the excluding —
       // "no slots" is unhelpful if a constraint the user forgot is the cause.
-      const blamesCompanion =
-        companion?.available_from !== undefined &&
-        allSlots.some((s) => s.date >= from && s.date <= to && !taken.has(s.id));
+      const hasSlotsAtAll = allSlots.some(
+        (s) => s.date >= from && s.date <= to && !taken.has(s.id),
+      );
+      if (hasSlotsAtAll && transport) {
+        return refuse(
+          "unavailable",
+          `${provider.name} has no appointment that both starts after ${transport.earliest_pickup} and finishes before ${transport.latest_return}. Widen the transport window or the dates.`,
+          { next: "set_transport_constraint" },
+        );
+      }
+      if (hasSlotsAtAll && companion?.available_from) {
+        return refuse(
+          "unavailable",
+          `${provider.name} has no slots that fit entirely inside the companion window ${companion.available_from}–${companion.available_to}. Widen the window or the dates.`,
+          { next: "set_companion_constraint" },
+        );
+      }
       return refuse(
         "unavailable",
-        blamesCompanion
-          ? `${provider.name} has no slots that fit entirely inside the companion window ${companion.available_from}–${companion.available_to}. Widen the window or the dates.`
-          : `${provider.name} has no open slots in that range. Widen the dates or change time_of_day.`,
-        { next: blamesCompanion ? "set_companion_constraint" : "get_availability" },
+        `${provider.name} has no open slots in that range. Widen the dates or change time_of_day.`,
+        { next: "get_availability" },
       );
     }
 

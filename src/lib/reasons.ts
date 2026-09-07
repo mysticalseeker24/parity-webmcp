@@ -23,6 +23,9 @@ export const REASONS = {
   search_had_results: "The last search matched providers, so there is nothing to explain.",
   no_booking: "There is no booking to change.",
   picking_times: "This is set before choosing a time.",
+  no_results: "No search results to look at yet.",
+  already_searched: "This describes the site before you start; a search is already under way.",
+  not_booked: "The appointment is not booked yet.",
 } as const;
 
 export type ReasonCode = keyof typeof REASONS;

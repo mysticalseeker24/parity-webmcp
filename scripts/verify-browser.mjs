@@ -300,15 +300,14 @@ try {
     /WebMCP: detected/.test(r.verdictText),
     JSON.stringify(r.verdictText),
   );
-  // getTools() is alphabetical. Tier 2 adds check_coverage and
-  // set_companion_constraint to the browsing stage.
+  // getTools() is alphabetical. With all 19 tools defined, the opening
+  // browsing stage is deliberately small: five live, fourteen explained.
   const BROWSING = [
-    "check_coverage",
+    "explain_capability",
     "find_providers",
     "get_booking_state",
     "list_accommodations",
     "select_provider",
-    "set_companion_constraint",
   ];
   check(
     "getTools() returns exactly the browsing-stage tools",
@@ -342,20 +341,15 @@ try {
     "live[] is grouped by tool group (#255)",
     JSON.stringify(r.result?.data?.live) ===
       JSON.stringify({
-        orient: ["get_booking_state", "list_accommodations"],
-        search: [
-          "find_providers",
-          "select_provider",
-          "check_coverage",
-          "set_companion_constraint",
-        ],
+        orient: ["get_booking_state", "list_accommodations", "explain_capability"],
+        search: ["find_providers", "select_provider"],
       }),
     JSON.stringify(r.result?.data?.live),
   );
   check(
     "unavailable[] explains every non-live tool (#262)",
     Array.isArray(r.result?.data?.unavailable) &&
-      r.result.data.unavailable.length === 7 &&
+      r.result.data.unavailable.length === 14 &&
       r.result.data.unavailable.every((u) => u.tool && u.reason_code && u.unlock_by),
     JSON.stringify(r.result?.data?.unavailable?.map((u) => u.reason_code)),
   );

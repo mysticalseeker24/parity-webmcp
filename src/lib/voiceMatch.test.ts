@@ -52,6 +52,14 @@ describe("matching on what the tools already declare", () => {
   });
 
   it("matches the human label", () => {
+    // check_coverage is live once a search has run.
+    store().recordSearch({
+      specialty: "neurology",
+      accommodations: [],
+      result_ids: ["p01"],
+      total_matches: 3,
+      eliminated_by: {},
+    });
     expect(matchTranscript("check insurance coverage", liveCandidates())?.tool.name).toBe(
       "check_coverage",
     );
