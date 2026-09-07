@@ -218,38 +218,35 @@ the human to see afterwards. Detection, not enforcement.
 
 **HELD.**
 
-**Setup.** Reach `intake_complete`, then **wait out the real 10-minute hold timer** — not a simulated
-transition, so the reason code observed is the one a user would actually hit.
+**Setup.** Reach `intake_complete`, then **wait out the real 10-minute hold timer** — not a
+simulated transition, so the reason code observed is the one a user would actually hit.
 
 **Observed.**
 
 ```
-Live tools with a hold + complete intake:
-  ["confirm_booking","get_availability","get_booking_state",
-   "hold_slot","list_accommodations","set_intake"]
+Live tools with a hold + complete intake — seven, at the cap:
+  ["confirm_booking","get_availability","get_booking_state","hold_slot",
+   "list_accommodations","release_slot","set_intake"]
 
 … 10 minutes elapse; the hold timer fires …
 
 Live tools after expiry:
-  ["find_providers","get_availability","get_booking_state",
-   "hold_slot","list_accommodations","select_provider"]
+  ["find_providers","get_availability","get_booking_state","hold_slot",
+   "list_accommodations","select_provider"]
 
 confirm_booking removed: true
 
 get_booking_state.unavailable[confirm_booking]:
-  {"tool":"confirm_booking",
-   "reason_code":"hold_expired",
-   "reason":"The hold on the slot expired.",
-   "unlock_by":"hold_slot"}
+  {"tool":"confirm_booking","reason_code":"hold_expired","unlock_by":"hold_slot"}
 ```
 
 **Audit trail**, newest first — the expiry appears as an actor in its own right, because nobody
-called a tool:
+called a tool. The timestamps are exactly ten minutes apart:
 
 ```
-Agent  · Check booking status · Stage provider selected. · 01:14:08 PM
-System · system · hold expired                           · 01:14:03 PM
-Agent  · Check booking status · Stage intake complete.   · 01:04:03 PM
+Agent  · Check booking status · Stage provider selected. · 07:41:15 PM
+System · system · hold expired                           · 07:41:10 PM
+Agent  · Check booking status · Stage intake complete.   · 07:31:10 PM
 ```
 
 **Announced to the live region** — the same context, spoken, which is the half of #262 that a
@@ -258,7 +255,7 @@ screen-reader user would otherwise lose entirely:
 ```
 "The hold on the slot expired."
 "Confirm booking is no longer available: the hold on the slot expired."
-"Fill in intake is no longer available: the hold on the slot expired."
+"Release the held slot is no longer available: the hold on the slot expired."
 ```
 
 `find_providers` and `select_provider` came *back* as the hold released, and were not announced —
