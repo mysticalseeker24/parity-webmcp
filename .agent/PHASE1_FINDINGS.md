@@ -127,7 +127,33 @@ object; they receive an `ExecuteContext` the factory builds.
 supplying an `AbortSignal` in Chrome 152. It will need its own cancellation
 (a tool, or a hold-expiry bound) rather than the documented `signal`.
 
-## 7. Confirmed as documented
+## 7. `requestUserInteraction()` does NOT exist in Chrome 152 (spec issue #165)
+
+Measured in Phase 6, because the grant gate would rather route approval through
+the host than through the page. `npm run verify:browser` reports it every run:
+
+```
+info  requestUserInteraction (#165): absent — ModelContext exposes:
+      executeTool, getTools, ontoolchange, registerTool
+```
+
+That is the **complete** `ModelContext` prototype surface in Chrome 152. There
+is no host-mediated elicitation to route approval through.
+
+**Why it matters.** #165 is the right home for grant approval, because the host
+— unlike the page — can distinguish the human from the computer-use agent that
+#288 records clicking a page's own Approve button. With it absent, Parity's
+page card is the *only* approval channel available, which is exactly why the
+README says page-side approval is **necessary, not sufficient** rather than
+claiming the gate is airtight.
+
+**Handled by:** `hostElicitationAvailable()` in `src/lib/grants.ts` feature-
+detects it every time and is never assumed. If a browser does implement it, the
+approval routes through it and is recorded with `channel: "host_elicitation"`;
+the page card stays as the fallback. Support in ChatGPT's built-in browser is
+still unverified — check it there before claiming anything either way.
+
+## 8. Confirmed as documented
 
 - `document.modelContext` exists; `navigator.modelContext` is `undefined`
   (TOOLS.md §2 is correct and current).
