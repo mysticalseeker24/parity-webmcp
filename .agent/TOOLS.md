@@ -242,7 +242,7 @@ Requirements either way:
 
 Typed TS module in `src/data/`. No backend, no fetch.
 
-- **12 providers** across 4 specialties. Each carries: `id`, `name`, `specialty`, `languages[]`, `insurance[]`, `accommodations[]`, `interpreter_lead_time_days`, `bio` (prose — treat as untrusted), `location`.
+- **16 providers** across 4 specialties (rheumatology deliberately runs past `find_providers`' cap of 5, so the "showing N of M" path is exercised by real data). Each carries: `id`, `name`, `specialty`, `languages[]`, `insurance[]`, `accommodations[]`, `interpreter_lead_time_days`, `bio` (prose — treat as untrusted), `location`.
 - **Slots generated deterministically** from a seed over a 14-day window, so demos are reproducible and the video can be re-shot without the data shifting. Same discipline as a deterministic reseed in a server fixture.
 - **Accommodation vocabulary is a `z.enum`**, exported once, consumed by `list_accommodations`, `find_providers`, and `set_intake`. One vocabulary, three consumers.
 - **Coverage rules as data, not code** — an array of `{ id, condition, effect, human_readable }` so `check_coverage` can return the rule path that produced its answer.

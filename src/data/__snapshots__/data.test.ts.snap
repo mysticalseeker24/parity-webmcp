@@ -2,7 +2,7 @@
 
 exports[`slots fixture > is deterministic — identical ids on every generation 1`] = `
 {
-  "count": 741,
+  "count": 997,
   "first": [
     "s_p01_2026-10-05_1200",
     "s_p01_2026-10-05_1300",

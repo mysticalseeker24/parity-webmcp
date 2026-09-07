@@ -23,7 +23,7 @@
 
 <p align="center">
   <strong>Verified end to end in Chrome (latest) with WebMCP enabled:</strong> tools register, the agent and the palette read the same registry, the full booking completes by keyboard alone, and the consent gate holds.<br>
-  <sub>328 unit tests · 22 assertions against real Chrome over the DevTools Protocol · 7 adversarial evals against the live deployment</sub>
+  <sub>385 unit tests · 34 assertions against real Chrome over the DevTools Protocol · 7 adversarial evals against the live deployment</sub>
 </p>
 
 ---
@@ -126,7 +126,7 @@ defineTool({
 
 That single object produces: the WebMCP registration (`inputSchema` via Zod 4's native `z.toJSONSchema()`), the command palette entry (a form generated from the same schema), the voice grammar, runtime validation, the screen-reader announcement, and the audit entry. **Six consumers, one definition.**
 
-### 19 tools defined, never more than 7 live
+### 19 tools defined, never more than 8 live
 
 Chrome's best practices warn that overlapping tools make agents choose badly. So the design is a **large total surface with a small live surface**: each tool carries an `available(state)` predicate, and the registry re-derives `allTools.filter(t => t.available(state))` on every store change, registering and unregistering via `AbortController`.
 
@@ -208,7 +208,7 @@ Parity is built as a set of concrete answers to open questions on the WebMCP spe
 |---|---|
 | [#262](https://github.com/webmachinelearning/webmcp/issues/262) unregistering destroys context | `get_booking_state.unavailable[]` returns `reason_code` + `unlock_by` for every non-live tool; the live region announces *why* a command disappeared. Enforcement by absence, context by explanation. |
 | [#282](https://github.com/webmachinelearning/webmcp/issues/282) no structured refusal signal | Every tool returns a typed `ToolResult`; refusals fulfil with `ok: false, kind`, only bugs throw. |
-| [#255](https://github.com/webmachinelearning/webmcp/issues/255) progressive disclosure | 19 defined, ≤7 live via state-driven registration; every tool carries a `group`; palette and state tool present them grouped. Built from existing primitives. |
+| [#255](https://github.com/webmachinelearning/webmcp/issues/255) progressive disclosure | 19 defined, ≤8 live via state-driven registration; every tool carries a `group`; palette and state tool present them grouped. Built from existing primitives. |
 | [#286](https://github.com/webmachinelearning/webmcp/issues/286) accessible name ↔ parameter description | Palette labels are generated from each Zod field's `.describe()`. The accessible name *is* the parameter description; they cannot disagree. |
 | [#277](https://github.com/webmachinelearning/webmcp/issues/277) / [#272](https://github.com/webmachinelearning/webmcp/issues/272) a11y requirements for agent UI | Actor-named live-region announcements, screen-reader-usable command surface, keyboard-complete flows, focus management on grant cards. Offered as an implementation datapoint. |
 | [#278](https://github.com/webmachinelearning/webmcp/issues/278) `executeTool` encoding | `src/lib/webmcpInterop.ts` handles the string-encoded `inputSchema`, string-encoded results, and JSON-string arguments observed in Chrome. |
@@ -298,7 +298,7 @@ Open it in Firefox, Safari, or Chrome without the flag. The badge says *not dete
 ### Automated checks
 
 ```bash
-npm run verify          # typecheck + 328 unit tests + build + 22 real-browser checks
+npm run verify          # typecheck + 385 unit tests + build + 34 real-browser checks
 npm run verify:browser  # just the browser pass (needs a build and Chrome 149+)
 npm test                # unit tests only — no browser needed, safe in CI
 node scripts/run-evals.mjs https://parity-webmcp.vercel.app/   # the structural evals
@@ -383,8 +383,8 @@ Then open the dev URL in a WebMCP browser (see [above](#1-open-it-where-an-agent
 | `src/lib/timers.ts` | Hold expiry, plus a written audit of every timer in the codebase and what clears it. |
 | `src/lib/undo.ts` | Inverse snapshots for reversible tools. Gated tools are never undoable. |
 | `src/lib/webmcpInterop.ts` | The seam between what `webmcp-types` promises and what Chrome does. |
-| `src/data/` | Synthetic fixtures: 12 providers, deterministic slots, coverage rules as data. |
-| `scripts/verify-browser.mjs` | 22 assertions against real Chrome over CDP. |
+| `src/data/` | Synthetic fixtures: 16 providers, deterministic slots, coverage rules as data. |
+| `scripts/verify-browser.mjs` | 34 assertions against real Chrome over CDP, including that every surface mirrors a tool call made from any other. |
 | `scripts/run-evals.mjs` | The structural adversarial evals. |
 
 **Stack.** Vite 8 · React 19 · TypeScript strict · Zod 4 (`z.toJSONSchema`) · Tailwind 4 · Zustand · `webmcp-types` · Web Speech API · Vitest · deployed on Vercel.

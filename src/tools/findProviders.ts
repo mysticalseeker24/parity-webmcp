@@ -1,13 +1,21 @@
 import * as z from "zod";
 import { ACCOMMODATION } from "../data/accommodations";
 import { PROVIDERS, SPECIALTY, type Provider } from "../data/providers";
-import { defineTool } from "../lib/defineTool";
+import { BUDGET, defineTool } from "../lib/defineTool";
 import { REASONS } from "../lib/reasons";
 import { ok, refuse } from "../lib/result";
 import { bookingStore, type LastSearch } from "../store";
 import { providerSummary } from "./shared";
 
 const MAX_RESULTS = 5;
+
+/**
+ * Room reserved for everything around the providers array — the envelope, the
+ * counts, the note and the summary sentence. Measured against the widest of
+ * those, then rounded up, so trimming is decided on the payload that actually
+ * ships rather than on the array alone.
+ */
+const ENVELOPE_ALLOWANCE = 260;
 
 /**
  * Multi-constraint search. Each constraint is applied in turn and the count it
@@ -74,7 +82,25 @@ export const findProviders = defineTool({
     }
 
     pool.sort((a, b) => a.location.distance_km - b.location.distance_km);
-    const shown = pool.slice(0, MAX_RESULTS);
+
+    /**
+     * How many results actually fit the 1.5K output budget (TOOLS.md §6).
+     *
+     * MAX_RESULTS alone was a guess that held only because no specialty had
+     * five rich records: adding providers pushed a real search to 1583
+     * characters. The budget check is dev-only, so in production that would
+     * have shipped an oversized payload silently rather than failing loudly.
+     * Deriving the count from the budget keeps it correct however long the
+     * records get, instead of re-breaking the next time one grows.
+     */
+    const fits = (n: number) =>
+      JSON.stringify(pool.slice(0, n).map(providerSummary)).length <=
+      BUDGET.output - ENVELOPE_ALLOWANCE;
+
+    let count = Math.min(pool.length, MAX_RESULTS);
+    while (count > 1 && !fits(count)) count -= 1;
+    const shown = pool.slice(0, count);
+    const hidden = pool.length - shown.length;
 
     const search: LastSearch = {
       specialty: input.specialty,
@@ -106,11 +132,11 @@ export const findProviders = defineTool({
         showing: shown.length,
         total: pool.length,
         providers: shown.map(providerSummary),
-        ...(pool.length > MAX_RESULTS
+        ...(hidden > 0
           ? { note: `showing ${shown.length} of ${pool.length}; narrow the search` }
           : {}),
       },
-      pool.length > MAX_RESULTS
+      hidden > 0
         ? `Showing ${shown.length} of ${pool.length} ${input.specialty} providers.`
         : `${pool.length} ${input.specialty} provider${pool.length === 1 ? "" : "s"}.`,
     );

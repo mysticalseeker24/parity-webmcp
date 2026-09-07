@@ -2,6 +2,7 @@ import * as z from "zod";
 import { isRealDate, SCHEDULE_END, SCHEDULE_START, slotsForProvider } from "../data/slots";
 import { defineTool } from "../lib/defineTool";
 import { REASONS } from "../lib/reasons";
+import { fitsAccessWindows } from "../lib/accessWindow";
 import { ok, refuse } from "../lib/result";
 import { bookingStore } from "../store";
 import { selectedProvider } from "./shared";
@@ -9,12 +10,6 @@ import { selectedProvider } from "./shared";
 const MAX_SLOTS = 8;
 
 /** "09:30" + 60 → "10:30". Slots never cross midnight in this fixture. */
-function addMinutes(time: string, minutes: number): string {
-  const [h, m] = time.split(":").map(Number);
-  const total = (h ?? 0) * 60 + (m ?? 0) + minutes;
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
-
 /**
  * Open slots for the selected provider. Registers only once a provider is
  * selected, and stays live through the held stages so a conflict at confirm
@@ -96,20 +91,9 @@ export const getAvailability = defineTool({
       const hour = Number(slot.time.slice(0, 2));
       if (input.time_of_day === "morning" && hour >= 12) return false;
       if (input.time_of_day === "afternoon" && hour < 12) return false;
-      // The companion has to be able to attend the whole appointment, not just
-      // its start — set_companion_constraint promises this filtering, so it has
-      // to actually happen here.
-      if (companion?.available_from && companion.available_to) {
-        const end = addMinutes(slot.time, slot.duration_min);
-        if (slot.time < companion.available_from || end > companion.available_to) return false;
-      }
-      // Same rule for paratransit: a slot you can reach but cannot leave is
-      // not a slot, so the appointment must finish before the return pickup.
-      if (transport) {
-        const end = addMinutes(slot.time, slot.duration_min);
-        if (slot.time < transport.earliest_pickup || end > transport.latest_return) return false;
-      }
-      return true;
+      // Shared with the calendar grid, so the tool and the screen can never
+      // give different answers to "when is this provider free?".
+      return fitsAccessWindows(slot, companion, transport);
     });
 
     state.markAvailabilityFetched();

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AuditTrail } from "./components/AuditTrail";
 import { BookingSummary } from "./components/BookingSummary";
 import { Calendar } from "./components/Calendar";
+import { ConstraintSummary } from "./components/ConstraintSummary";
 import { CommandPalette } from "./components/CommandPalette";
 import { GrantCard } from "./components/GrantCard";
 import { HowItWorks } from "./components/HowItWorks";
@@ -203,6 +204,7 @@ export default function App() {
           </Section>
 
           <Section id="calendar" step="3" title="Pick a time">
+            <ConstraintSummary />
             <Calendar />
           </Section>
 

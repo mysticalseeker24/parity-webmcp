@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SCHEDULE_DATES, slotLabel, slotsForProvider, type Slot } from "../data/slots";
 import { executeAsHuman } from "../lib/registry";
 import { isRefusal } from "../lib/result";
+import { accessWindowReason, fitsAccessWindows } from "../lib/accessWindow";
 import { useBookingStore } from "../store";
 
 /**
@@ -53,6 +54,8 @@ export function Calendar() {
   const providerId = useBookingStore((s) => s.selectedProviderId);
   const heldSlot = useBookingStore((s) => s.heldSlot);
   const takenSlotIds = useBookingStore((s) => s.takenSlotIds);
+  const companion = useBookingStore((s) => s.companion);
+  const transport = useBookingStore((s) => s.transport);
   const [cursor, setCursor] = useState<Cursor>({ row: 0, col: 0 });
   const [message, setMessage] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -72,9 +75,13 @@ export function Calendar() {
   const isHoldable = useCallback(
     (row: number, col: number) => {
       const slot = matrix[row]?.[col];
-      return slot !== null && slot !== undefined && !takenSlotIds.includes(slot.id);
+      if (slot === null || slot === undefined) return false;
+      if (takenSlotIds.includes(slot.id)) return false;
+      // Same predicate get_availability filters on, so the grid cannot offer a
+      // time the tool has already excluded.
+      return fitsAccessWindows(slot, companion, transport);
     },
-    [matrix, takenSlotIds],
+    [matrix, takenSlotIds, companion, transport],
   );
 
   /**
@@ -85,11 +92,16 @@ export function Calendar() {
    * looking at the grid belongs in the audit trail exactly as the agent's call
    * does. Same tool, same path, one entry per provider.
    */
+  // Availability is re-read whenever the provider or an access constraint
+  // changes. Without the constraints in the key, setting a paratransit window
+  // left the previously fetched slots on screen unfiltered — the tool had
+  // taken effect but the grid still offered times it had just excluded.
+  const fetchKey = providerId ? `${providerId}|${JSON.stringify(companion)}|${JSON.stringify(transport)}` : null;
   useEffect(() => {
-    if (!providerId || fetchedFor.current === providerId) return;
-    fetchedFor.current = providerId;
+    if (!fetchKey || fetchedFor.current === fetchKey) return;
+    fetchedFor.current = fetchKey;
     void executeAsHuman("get_availability", {});
-  }, [providerId]);
+  }, [fetchKey]);
 
   /** Park the cursor on a real slot so the first Tab lands somewhere useful. */
   useEffect(() => {
@@ -277,14 +289,23 @@ export function Calendar() {
                   const held = slot !== null && heldSlot?.slotId === slot.id;
                   const taken = slot !== null && takenSlotIds.includes(slot.id);
                   const isCursor = cursor.row === row && cursor.col === col;
+                  // Excluded by a constraint the user set, not by the clinic.
+                  // Saying which one beats a silently empty grid.
+                  const outside = slot && !taken ? accessWindowReason(slot, companion, transport) : null;
 
-                  if (!slot || taken) {
+                  if (!slot || taken || outside) {
                     return (
                       // slate-500, not slate-400: the marker is decorative but
                       // still read by sighted users, and 400 on white is ~2.6:1.
                       <td key={date} className="border-[1.5px] border-ink p-1 text-center text-ink-soft">
-                        <span aria-hidden="true">{taken ? "×" : "·"}</span>
-                        <span className="sr-only">{taken ? "Taken" : "No slot"}</span>
+                        <span aria-hidden="true">{taken ? "×" : outside ? "–" : "·"}</span>
+                        <span className="sr-only">
+                          {taken
+                            ? "Taken"
+                            : outside && slot
+                              ? `${slotLabel(slot)} is ${outside}.`
+                              : "No slot"}
+                        </span>
                       </td>
                     );
                   }

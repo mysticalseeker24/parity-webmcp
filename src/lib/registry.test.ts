@@ -63,19 +63,20 @@ describe("registry — the live set is a pure function of state", () => {
 
     mc!.clearLog();
     store().markAvailabilityFetched();
-    // Picking times begins: hold_slot arrives, and the pre-scheduling
-    // constraint tools step aside.
+    // Picking times begins: hold_slot arrives. The access constraints stay,
+    // because looking at the calendar is exactly when someone realises the
+    // carer is only free in the morning — get_availability re-reads them.
     expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name)).toEqual(["hold_slot"]);
-    expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name).sort()).toEqual([
-      "set_companion_constraint",
-      "set_transport_constraint",
-    ]);
+    expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name)).toEqual([]);
 
     mc!.clearLog();
     store().holdSlot({ slotId: "s1", providerId: "p01", expiresAt: Date.now() + HOLD_TTL_MS });
+    // A hold fixes who and how; changing either now would invalidate it.
     expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name).sort()).toEqual([
       "find_providers",
       "select_provider",
+      "set_companion_constraint",
+      "set_transport_constraint",
     ]);
     expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name).sort()).toEqual([
       "release_slot",

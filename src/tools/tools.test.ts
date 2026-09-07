@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PROVIDERS } from "../data/providers";
+import { PROVIDERS, SPECIALTY } from "../data/providers";
 import { slotsForProvider } from "../data/slots";
 import { BUDGET } from "../lib/defineTool";
 import { isRefusal, type ToolRefusal, type ToolResult } from "../lib/result";
@@ -182,13 +182,31 @@ describe("find_providers", () => {
     expect(JSON.stringify(result)).not.toMatch(/SYSTEM NOTE/);
   });
 
-  it("caps at 5 and says how many it is hiding", async () => {
-    // Widen past the cap by searching a specialty with more matches than 5 is
-    // not possible with 3 per specialty, so assert the note logic directly.
+  it("says how many it is hiding when a specialty runs past the cap", async () => {
+    // Rheumatology has more providers than the cap, so this exercises the
+    // paging branch with real data rather than asserting it in the abstract.
+    const data = expectOk(await findProviders.run({ specialty: "rheumatology" }));
+    const total = data["total"] as number;
+    const showing = data["showing"] as number;
+    expect(total).toBeGreaterThan(showing);
+    expect(showing).toBeLessThanOrEqual(5);
+    expect(data["note"]).toBe(`showing ${showing} of ${total}; narrow the search`);
+    expect((data["providers"] as unknown[]).length).toBe(showing);
+  });
+
+  it("omits the note when everything matching is shown", async () => {
     const data = expectOk(await findProviders.run({ specialty: "neurology" }));
     expect(data["note"]).toBeUndefined();
-    expect(data["showing"]).toBe(3);
-    expect(data["total"]).toBe(3);
+    expect(data["showing"]).toBe(data["total"]);
+  });
+
+  it("shows fewer than the cap rather than exceed the output budget", async () => {
+    // The cap is a ceiling, not a promise: what ships is whatever fits 1.5K.
+    // Hardcoding 5 broke the moment provider records got richer.
+    for (const specialty of SPECIALTY.options) {
+      const result = await findProviders.run({ specialty });
+      expect(JSON.stringify(result).length, specialty).toBeLessThanOrEqual(BUDGET.output);
+    }
   });
 
   it("refuses with the eliminating constraint when nothing matches", async () => {
@@ -210,10 +228,29 @@ describe("find_providers", () => {
   });
 
   it("matches insurance and language case-insensitively", async () => {
-    const byPlan = expectOk(
-      await findProviders.run({ specialty: "rheumatology", insurance: "northstar ppo" }),
-    );
-    expect((byPlan["providers"] as { id: string }[]).map((p) => p.id)).toEqual(["p06", "p05"]);
+    const ids = async (insurance: string) =>
+      (
+        expectOk(await findProviders.run({ specialty: "rheumatology", insurance }))[
+          "providers"
+        ] as { id: string }[]
+      ).map((p) => p.id);
+
+    // Asserted as a property rather than a fixed id list: the point is that
+    // casing cannot change the answer, and that stays true as providers are
+    // added.
+    const lower = await ids("northstar ppo");
+    expect(lower.length).toBeGreaterThan(0);
+    expect(await ids("Northstar PPO")).toEqual(lower);
+    expect(await ids("NORTHSTAR ppo")).toEqual(lower);
+    for (const id of lower) {
+      expect(PROVIDERS.find((p) => p.id === id)?.insurance).toContain("Northstar PPO");
+    }
+  });
+
+  it("orders results nearest first", async () => {
+    const data = expectOk(await findProviders.run({ specialty: "rheumatology" }));
+    const distances = (data["providers"] as { distance_km: number }[]).map((p) => p.distance_km);
+    expect([...distances].sort((a, b) => a - b)).toEqual(distances);
   });
 
   it("refuses an unknown specialty, naming the field and the valid values", async () => {

@@ -32,11 +32,32 @@ describe("accommodation vocabulary", () => {
 });
 
 describe("providers fixture", () => {
-  it("has 12 providers, 3 per specialty, with unique ids", () => {
-    expect(PROVIDERS).toHaveLength(12);
-    expect(new Set(PROVIDERS.map((p) => p.id)).size).toBe(12);
+  it("has 16 providers with unique ids, and at least 3 in every specialty", () => {
+    expect(PROVIDERS).toHaveLength(16);
+    expect(new Set(PROVIDERS.map((p) => p.id)).size).toBe(16);
     for (const specialty of SPECIALTY.options) {
-      expect(PROVIDERS.filter((p) => p.specialty === specialty)).toHaveLength(3);
+      expect(PROVIDERS.filter((p) => p.specialty === specialty).length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("gap: one specialty runs past find_providers' cap, so paging is real", () => {
+    // Without this the "showing N of M" branch has no data that reaches it and
+    // the cap can only be asserted in the abstract.
+    const counts = SPECIALTY.options.map(
+      (s) => PROVIDERS.filter((p) => p.specialty === s).length,
+    );
+    expect(Math.max(...counts)).toBeGreaterThan(5);
+  });
+
+  it("names every provider distinctly, so a result list is never ambiguous", () => {
+    expect(new Set(PROVIDERS.map((p) => p.name)).size).toBe(PROVIDERS.length);
+  });
+
+  it("gives every provider at least one accommodation and one plan", () => {
+    for (const p of PROVIDERS) {
+      expect(p.accommodations.length).toBeGreaterThan(0);
+      expect(p.insurance.length).toBeGreaterThan(0);
+      expect(p.interpreter_lead_time_days).toBeGreaterThanOrEqual(0);
     }
   });
 

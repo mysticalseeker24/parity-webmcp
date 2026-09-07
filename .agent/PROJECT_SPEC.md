@@ -104,7 +104,7 @@ The palette must be able to complete a full booking with keyboard only, no agent
 
 ---
 
-## 5. Tool inventory — 19 defined, never more than 7 live
+## 5. Tool inventory — 19 defined, never more than 8 live
 
 Chrome's best practices are explicit that the more tools you register and the more they overlap, the harder it is for the agent to pick correctly. So the design is a **large total surface with a small live surface**, gated by the state machine. This is a deliberate, defensible answer to "how many tools" and should be stated in the README.
 

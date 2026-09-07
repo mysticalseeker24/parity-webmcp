@@ -535,6 +535,96 @@ try {
     JSON.stringify({ form: follow.openedForm, value: follow.prefilled }),
   );
 
+  // Reported live: a search run from the palette moved the results but left the
+  // page's own search form asserting the specialty nobody searched for.
+  const mirrored = await cdp(`(async () => {
+    const before = document.querySelector("#specialty")?.value ?? null;
+    const mc = document.modelContext;
+    const t = (await mc.getTools()).find((x) => x.name === "find_providers");
+    if (!t) return { error: "find_providers not live" };
+    await mc.executeTool(t, JSON.stringify({ specialty: "audiology" }));
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      before,
+      after: document.querySelector("#specialty")?.value ?? null,
+      resultsHeading: document.querySelector("#results-heading")?.textContent ?? "",
+      listedNames: [...document.querySelectorAll("button")]
+        .filter((b) => /^Select /.test(b.textContent || "")).length,
+    };
+  })()`);
+
+  check(
+    "the page's search form mirrors a search run from somewhere else",
+    mirrored.after === "audiology" && mirrored.before !== mirrored.after,
+    JSON.stringify(mirrored),
+  );
+  check(
+    "the results list moved with it, so form and list agree",
+    mirrored.listedNames > 0,
+    JSON.stringify(mirrored.listedNames ?? mirrored.error),
+  );
+
+  // The access constraints were unreachable in the deployed app: the calendar
+  // fetched availability the instant a provider was selected, which closed the
+  // window both tools were gated on. And the grid built itself from the
+  // fixture while the tool filtered, so the two disagreed about the same
+  // question.
+  const access = await cdp(`(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const mc = document.modelContext;
+    const call = async (n, a) => {
+      const t = (await mc.getTools()).find((x) => x.name === n);
+      if (!t) return { MISSING: n };
+      return JSON.parse(await mc.executeTool(t, JSON.stringify(a)));
+    };
+    const holdable = () =>
+      [...document.querySelectorAll("table button")].filter((b) => !b.disabled).length;
+
+    await call("find_providers", { specialty: "rheumatology" });
+    await call("select_provider", { provider_id: "p16" });
+    await settle(700);
+    const before = holdable();
+
+    const set = await call("set_transport_constraint", {
+      earliest_pickup: "10:00",
+      latest_return: "12:00",
+    });
+    await settle(800);
+
+    const avail = await call("get_availability", {});
+    const panel = [...document.querySelectorAll("section")]
+      .find((s) => /Narrowing these times/.test(s.textContent || ""));
+
+    return {
+      reachable: set.MISSING === undefined && set.ok === true,
+      gridBefore: before,
+      gridAfter: holdable(),
+      toolSlots: avail?.data?.total ?? null,
+      panelText: panel ? panel.textContent.trim().slice(0, 120) : null,
+    };
+  })()`);
+
+  check(
+    "the access constraint tools are reachable after a provider is chosen",
+    access.reachable === true,
+    JSON.stringify(access.reachable ?? access),
+  );
+  check(
+    "setting a paratransit window narrows the calendar on screen",
+    access.gridAfter > 0 && access.gridAfter < access.gridBefore,
+    JSON.stringify({ before: access.gridBefore, after: access.gridAfter }),
+  );
+  check(
+    "the grid and the tool agree on how many slots there are",
+    access.gridAfter === access.toolSlots,
+    JSON.stringify({ grid: access.gridAfter, tool: access.toolSlots }),
+  );
+  check(
+    "the page says which window is narrowing the times",
+    /Narrowing these times/.test(access.panelText ?? "") && /10:00/.test(access.panelText ?? ""),
+    JSON.stringify(access.panelText),
+  );
+
   check(
     "no tool invocation threw and no page error fired",
     Object.keys(r.errors ?? {}).length === 0 && (r.pageErrors ?? []).length === 0,

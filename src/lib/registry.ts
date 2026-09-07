@@ -22,8 +22,12 @@ import type { StoreApi } from "zustand/vanilla";
  * (dynamic tool definitions) is exactly this mechanism.
  */
 
-/** Chrome's guidance: past ~7 live tools the agent starts choosing badly. */
-export const MAX_LIVE_TOOLS = 7;
+/**
+ * Chrome's guidance: past roughly this many live tools the agent starts
+ * choosing badly. The busiest stage is `provider_selected`, which carries the
+ * search pair, scheduling, and both access constraints at once.
+ */
+export const MAX_LIVE_TOOLS = 8;
 
 export interface Registry {
   /** Tools registered right now — the palette's fallback when WebMCP is absent. */

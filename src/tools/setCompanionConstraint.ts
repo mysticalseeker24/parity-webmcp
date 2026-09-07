@@ -33,7 +33,14 @@ export const setCompanionConstraint = defineTool({
   voiceAliases: ["my carer can come", "companion times"],
   // Same home as the transport window: both are "who is coming and how",
   // settled once a provider is chosen and before times are picked.
-  available: (state) => state.stage === "provider_selected" && !state.hasFetchedAvailability,
+  // Settable for as long as it can still change the outcome — until a slot is
+  // held. Gating on !hasFetchedAvailability assumed people declare every
+  // constraint before looking; in practice the Calendar fetches availability
+  // the moment a provider is selected, so that window closed before anyone
+  // could reach it and this tool was dead in the deployed app. People also
+  // work the other way round: look first, then say the carer is only free in
+  // the morning. get_availability re-reads both constraints on every call.
+  available: (state) => state.stage === "provider_selected",
   unavailableReason: (state) => {
     if (state.stage === "booked") {
       return { reason_code: "already_booked", reason: REASONS.already_booked, unlock_by: "" };
@@ -41,7 +48,7 @@ export const setCompanionConstraint = defineTool({
     if (state.stage === "browsing") {
       return { reason_code: "no_provider", reason: REASONS.no_provider, unlock_by: "select_provider" };
     }
-    return { reason_code: "picking_times", reason: REASONS.picking_times, unlock_by: "release_slot" };
+    return { reason_code: "hold_active", reason: REASONS.hold_active, unlock_by: "release_slot" };
   },
   execute: (input) => {
     for (const [field, value] of [

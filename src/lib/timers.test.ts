@@ -154,11 +154,15 @@ describe("expiry, seen from both surfaces", () => {
       unlock_by: "hold_slot",
     });
     expect(confirm?.reason).toBe("The hold on the slot expired.");
-    // The browsing-stage tools come back once the hold is gone.
-    // find_providers and select_provider return; the companion and transport
-    // tools do not, because availability has already been fetched for this
-    // provider and those are set before times are picked.
-    expect([...(change?.added ?? [])].sort()).toEqual(["find_providers", "select_provider"]);
+    // Everything a hold had suspended comes back when it expires: you can
+    // search again, change provider, and restate the access constraints —
+    // which is often exactly why the hold was allowed to lapse.
+    expect([...(change?.added ?? [])].sort()).toEqual([
+      "find_providers",
+      "select_provider",
+      "set_companion_constraint",
+      "set_transport_constraint",
+    ]);
   });
 
   it("distinguishes an expired hold from one that never existed", async () => {

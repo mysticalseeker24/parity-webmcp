@@ -10,6 +10,12 @@ import type { Accommodation } from "./accommodations";
  *  - "Harbor Assist" is accepted by nobody
  *  - p07 has a 21-day interpreter lead time
  *  - p10's bio carries the prompt-injection fixture for the adversarial eval
+ *  - rheumatology has 7, more than find_providers' cap of 5, so the "showing N
+ *    of M" path is exercised by real data rather than asserted in the abstract
+ *
+ * Bios name real limitations as well as strengths ("four steps and no lift"),
+ * because a directory that only lists what works is the thing this product is
+ * arguing against.
  */
 
 export const SPECIALTY = z.enum(["neurology", "rheumatology", "audiology", "physiotherapy"]);
@@ -228,6 +234,72 @@ export const PROVIDERS: readonly Provider[] = [
     interpreter_lead_time_days: 4,
     bio: "Amputee care and prosthetics. Low-sensory treatment room on the same floor as reception.",
     location: { area: "Riverside", distance_km: 5.5 },
+  },
+  {
+    id: "p13",
+    name: "Dr. Annika Lindqvist",
+    specialty: "rheumatology",
+    languages: ["English", "Swedish", "German"],
+    insurance: ["CivicCare Basic", "Lantern Plus"],
+    accommodations: [
+      "wheelchair_accessible",
+      "step_free_entrance",
+      "ground_floor",
+      "hoist_transfer",
+      "large_print_forms",
+      "extended_appointment",
+      "companion_seating",
+    ],
+    interpreter_lead_time_days: 2,
+    bio: "Osteoporosis and metabolic bone disease. Ceiling hoist in the assessment room; forms available in 18pt on request.",
+    location: { area: "Old Mill District", distance_km: 11.4 },
+  },
+  {
+    id: "p14",
+    name: "Dr. Nadia Chowdhury-Reyes",
+    specialty: "rheumatology",
+    languages: ["English", "Bengali", "Spanish"],
+    insurance: ["BlueRidge Select", "Northstar PPO", "Lantern Plus"],
+    accommodations: [
+      "wheelchair_accessible",
+      "step_free_entrance",
+      "ground_floor",
+      "guide_dog_welcome",
+      "extended_appointment",
+    ],
+    interpreter_lead_time_days: 4,
+    bio: "Psoriatic arthritis and spondyloarthritis. Infusion suite is on the ground floor; the nearest accessible parking is a short ramped walk from the entrance.",
+    location: { area: "Riverside", distance_km: 2.4 },
+  },
+  {
+    id: "p15",
+    name: "Dr. Tomas Iversen-Bright",
+    specialty: "rheumatology",
+    languages: ["English", "Danish"],
+    insurance: ["Meridian HMO", "CivicCare Basic"],
+    accommodations: ["asl_interpreter", "low_sensory", "large_print_forms", "companion_seating"],
+    interpreter_lead_time_days: 2,
+    bio: "Fibromyalgia and chronic pain. Quiet waiting area away from the main corridor. The consulting room is reached by four steps and there is no lift.",
+    location: { area: "Hillcrest", distance_km: 7.2 },
+  },
+  {
+    id: "p16",
+    name: "Dr. Rafael Onwuka-Barros",
+    specialty: "rheumatology",
+    languages: ["English", "Portuguese", "Spanish"],
+    insurance: ["Northstar PPO", "Lantern Plus"],
+    accommodations: [
+      "wheelchair_accessible",
+      "step_free_entrance",
+      "ground_floor",
+      "hoist_transfer",
+      "low_sensory",
+      "guide_dog_welcome",
+      "companion_seating",
+    ],
+    interpreter_lead_time_days: 3,
+    bio: "Juvenile and adult inflammatory arthritis. Wide-door consulting rooms and a tracking hoist; appointments can be split across two shorter visits.",
+    location: { area: "Northgate", distance_km: 1.9 },
   },
 ];
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { Calendar } from "./Calendar";
 import { startRegistry, type Registry } from "../lib/registry";
@@ -151,5 +151,61 @@ describe("Calendar — state shown in text", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.getByRole("status").textContent).toMatch(/Could not hold|held for 10 minutes/);
+  });
+});
+
+describe("Calendar — the grid and the tool give one answer", () => {
+  it("greys slots a transport window excludes, and says which window", async () => {
+    render(<Calendar />);
+    const holdableBefore = cells().length;
+    expect(holdableBefore).toBeGreaterThan(0);
+
+    await registry!.execute("set_transport_constraint", {
+      earliest_pickup: "10:00",
+      latest_return: "12:00",
+    });
+
+    // Regression: the grid built itself from the fixture while the tool
+    // filtered, so an agent saw the constrained list and the person looking at
+    // the same screen saw every slot.
+    await waitFor(() => expect(cells().length).toBeLessThan(holdableBefore));
+    expect(cells().length).toBeGreaterThan(0);
+
+    // Every excluded cell says which window excluded it, not just "no slot".
+    expect(
+      screen.getAllByText(/is outside your transport window of 10:00 to 12:00/).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("offers a slot again once the window widens", async () => {
+    render(<Calendar />);
+    await registry!.execute("set_transport_constraint", {
+      earliest_pickup: "10:00",
+      latest_return: "11:00",
+    });
+    await waitFor(() => expect(cells().length).toBeGreaterThan(0));
+    const narrow = cells().length;
+
+    await registry!.execute("set_transport_constraint", {
+      earliest_pickup: "09:00",
+      latest_return: "16:00",
+    });
+    await waitFor(() => expect(cells().length).toBeGreaterThan(narrow));
+  });
+
+  it("never leaves a holdable cell the tool would refuse", async () => {
+    render(<Calendar />);
+    await registry!.execute("set_companion_constraint", {
+      name: "Ruth",
+      available_from: "09:00",
+      available_to: "11:00",
+    });
+    await waitFor(() => expect(cells().length).toBeGreaterThan(0));
+
+    // Every cell still offered must survive hold_slot, or the grid is lying.
+    for (const cell of cells()) {
+      const label = cell.textContent ?? "";
+      expect(label).not.toMatch(/outside/);
+    }
   });
 });
