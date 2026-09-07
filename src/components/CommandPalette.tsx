@@ -352,10 +352,17 @@ export function CommandPalette() {
       /* Escape is handled once, at the window — see the effect above. Handling
          it here too would stop the event before it got there whenever focus
          happened to be inside the dialog. */
-      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/40 p-4 pt-16"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-ink/40 p-4 sm:pt-10"
     >
-      <div className="w-full max-w-2xl border-[1.5px] border-ink bg-stock p-4 ">
-        <div className="flex items-baseline justify-between gap-4">
+      {/*
+        The card is a column that never outgrows the viewport: header and
+        actions stay put, and only the middle scrolls. Without the height cap
+        a long form — find_providers has ten checkboxes — pushed Run and the
+        result below the fold of a `fixed` overlay, where nothing could scroll
+        to them. The control was not broken; it was off-screen.
+      */}
+      <div className="flex max-h-[calc(100dvh-3rem)] w-full max-w-2xl flex-col border-[1.5px] border-ink bg-stock">
+        <div className="flex shrink-0 items-baseline justify-between gap-4 border-b border-ink px-4 py-3">
           <h2 id="palette-title" className="text-lg font-bold text-ink">
             Commands
           </h2>
@@ -366,7 +373,8 @@ export function CommandPalette() {
 
         {!selected ? (
           <>
-            <label htmlFor="palette-search" className="mt-3 block font-semibold text-ink">
+            <div className="shrink-0 px-4 pt-3">
+            <label htmlFor="palette-search" className="block font-semibold text-ink">
               Search available commands
             </label>
             <input
@@ -389,8 +397,14 @@ export function CommandPalette() {
             <p id="palette-count" role="status" aria-live="polite" className="mt-1 text-sm text-ink">
               {matches.length} command{matches.length === 1 ? "" : "s"} available
             </p>
+            </div>
 
-            <ul id="palette-listbox" role="listbox" aria-label="Available commands" className="mt-2 max-h-80 overflow-y-auto">
+            <ul
+              id="palette-listbox"
+              role="listbox"
+              aria-label="Available commands"
+              className="min-h-0 flex-1 overflow-y-auto px-4 pb-3"
+            >
               {/* Searching: a flat list in relevance order, so what the DOM
                   shows is the order Enter will follow. Grouping while filtering
                   put the best match underneath a heading it did not belong to,
@@ -438,8 +452,9 @@ export function CommandPalette() {
               e.preventDefault();
               void run(selected);
             }}
-            className="mt-3 flex flex-col gap-3"
+            className="flex min-h-0 flex-1 flex-col"
           >
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
             <div>
               <h3 className="font-display font-bold uppercase tracking-wide text-ink">
                 {selected.label}
@@ -469,6 +484,10 @@ export function CommandPalette() {
               />
             ))}
 
+            </div>
+
+            {/* Pinned: always reachable, however long the form is. */}
+            <div className="flex shrink-0 flex-col gap-3 border-t border-ink px-4 py-3">
             <div className="flex flex-wrap gap-3">
               <button
                 ref={runButtonRef}
@@ -491,7 +510,11 @@ export function CommandPalette() {
             </div>
 
             {result && (
-              <div role="status" aria-live="polite" className="rounded border-[1.5px] border-ink bg-stock-deep p-3 text-sm">
+              <div
+                role="status"
+                aria-live="polite"
+                className="max-h-40 overflow-y-auto border-[1.5px] border-ink bg-stock-deep p-3 text-sm"
+              >
                 {isRefusal(result) ? (
                   <>
                     <p className="font-semibold text-spot-deep">
@@ -511,10 +534,11 @@ export function CommandPalette() {
                 )}
               </div>
             )}
+            </div>
           </form>
         )}
 
-        <div className="mt-3 flex justify-between border-t border-ink pt-2 text-xs text-ink-soft">
+        <div className="flex shrink-0 justify-between border-t border-ink px-4 py-2 text-xs text-ink-soft">
           <span>Arrows move · Enter opens · Escape closes</span>
           <button
             type="button"
