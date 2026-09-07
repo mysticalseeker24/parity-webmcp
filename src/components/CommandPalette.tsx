@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { executeAsHuman, getRegistry } from "../lib/registry";
 import { type ToolResult } from "../lib/result";
 import { ResultView } from "./ResultView";
+import { followUpsFor } from "../lib/followUps";
 import { onPaletteRequest, type PaletteRequest } from "../lib/paletteBridge";
 import { fieldsFromSchema, valuesToArgs, type FormField } from "../lib/schemaForm";
 import { readInputSchema, type JsonSchema } from "../lib/webmcpInterop";
@@ -49,6 +50,7 @@ interface PaletteTool {
   readonly fields: readonly FormField[];
   /** False when getTools() offered a tool the local map does not know. */
   readonly known: boolean;
+  readonly readOnly: boolean;
 }
 
 /** Read the live set from the browser, falling back to the local registry. */
@@ -80,6 +82,7 @@ function useLiveTools(open: boolean): { tools: PaletteTool[]; viaBrowser: boolea
             schema,
             fields: fieldsFromSchema(schema),
             known: local !== undefined,
+            readOnly: local?.spec.readOnly ?? false,
           };
         }),
       );
@@ -98,6 +101,7 @@ function useLiveTools(open: boolean): { tools: PaletteTool[]; viaBrowser: boolea
           schema,
           fields: fieldsFromSchema(schema),
           known: true,
+          readOnly: tool.spec.readOnly ?? false,
         };
       }),
     );
@@ -270,6 +274,13 @@ export function CommandPalette() {
     openerRef.current?.focus();
   }
   closeRef.current = close;
+
+  // Derived from the result's own shape against the live set, so a tool added
+  // later is offered here without this component learning its name.
+  const followUps = useMemo(
+    () => (result?.ok ? followUpsFor(result.data, tools) : []),
+    [result, tools],
+  );
 
   function choose(tool: PaletteTool) {
     setSelected(tool);
@@ -517,6 +528,48 @@ export function CommandPalette() {
                 className="max-h-56 overflow-y-auto border-[1.5px] border-ink bg-stock-deep p-3 text-sm"
               >
                 <ResultView result={result} />
+              </div>
+            )}
+
+            {/* A result that lists things you cannot act on is a dead end: the
+                ids are on screen and the only way to use one is to retype it
+                into a second command. Each button opens that tool pre-filled
+                and waits — the same rule voice follows. */}
+            {followUps.length > 0 && (
+              <div className="border-[1.5px] border-ink bg-stock px-3 py-2">
+                <p
+                  id="palette-followups"
+                  className="font-display text-[0.7rem] font-bold uppercase tracking-wide text-ink-soft"
+                >
+                  Act on a result
+                </p>
+                <ul aria-labelledby="palette-followups" className="mt-2 flex flex-col gap-1.5">
+                  {followUps.map((entity) => (
+                    <li key={entity.id} className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                        {entity.label}
+                      </span>
+                      {entity.tools.map((target) => {
+                        const tool = tools.find((t) => t.name === target.name);
+                        if (!tool) return null;
+                        return (
+                          <button
+                            key={target.name}
+                            type="button"
+                            onClick={() => {
+                              choose(tool);
+                              setValues({ [target.fields.find((f) => f.required)!.name]: entity.id });
+                            }}
+                            className="shrink-0 rounded border-[1.5px] border-ink px-2 py-1 text-xs font-semibold text-ink hover:bg-stock-deep"
+                          >
+                            {tool.label}
+                            <span className="sr-only"> for {entity.label}</span>
+                          </button>
+                        );
+                      })}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
             </div>

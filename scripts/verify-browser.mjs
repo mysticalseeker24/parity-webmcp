@@ -464,6 +464,77 @@ try {
     JSON.stringify((pal.resultText ?? pal.error ?? "").slice(0, 160)),
   );
 
+  // A result listing providers you cannot act on is a dead end for the
+  // keyboard-only user: the ids are on screen and the only way to use one is to
+  // read it and retype it into a second command.
+  const follow = await cdp(`(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const set = (el, v) => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value").set.call(el, v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    let d = document.querySelector('[role="dialog"]');
+    if (!d) return { error: "palette closed" };
+
+    // Back out of the provider-detail form first: while a form is showing there
+    // is no search input to type into.
+    [...d.querySelectorAll("form button")]
+      .find((b) => /Back to commands/.test(b.textContent || ""))
+      ?.click();
+    await settle(250);
+    const search = d.querySelector("#palette-search");
+    if (!search) return { error: "search input never came back" };
+    set(search, "find");
+    await settle(200);
+    d.querySelector('[role="option"]').click();
+    await settle(200);
+    const sel = d.querySelector("form select");
+    if (sel) { set(sel, "physiotherapy"); sel.dispatchEvent(new Event("change", { bubbles: true })); }
+    await settle(150);
+    d.querySelector('form button[type="submit"]').click();
+    await settle(600);
+
+    const region = [...d.querySelectorAll("ul")]
+      .find((u) => u.getAttribute("aria-labelledby") === "palette-followups");
+    if (!region) return { error: "no follow-ups offered" };
+    const buttons = [...region.querySelectorAll("button")];
+    const focusable = [...d.querySelectorAll("button,input,select,a[href]")].filter((e) => !e.disabled);
+
+    buttons[0].click();
+    await settle(300);
+    d = document.querySelector('[role="dialog"]');
+    const input = d.querySelector('form input[type="text"], form input:not([type])');
+
+    return {
+      rows: [...region.querySelectorAll("li")].length,
+      firstButton: buttons[0].textContent.trim(),
+      inTabOrder: buttons.every((b) => focusable.includes(b)),
+      openedForm: d.querySelector("form h3")?.textContent?.trim() ?? "",
+      prefilled: input?.value ?? "",
+    };
+  })()`);
+
+  check(
+    "a result that lists providers offers an action for each one",
+    follow.rows === 3,
+    JSON.stringify(follow.rows ?? follow.error),
+  );
+  check(
+    "the action that advances the booking leads",
+    /^Select provider/.test(follow.firstButton ?? ""),
+    JSON.stringify(follow.firstButton ?? follow.error),
+  );
+  check(
+    "every follow-up is reachable by keyboard",
+    follow.inTabOrder === true,
+    JSON.stringify(follow.inTabOrder ?? follow.error),
+  );
+  check(
+    "it opens the tool pre-filled and waits, rather than executing",
+    follow.openedForm === "Select provider" && follow.prefilled === "p10",
+    JSON.stringify({ form: follow.openedForm, value: follow.prefilled }),
+  );
+
   check(
     "no tool invocation threw and no page error fired",
     Object.keys(r.errors ?? {}).length === 0 && (r.pageErrors ?? []).length === 0,
