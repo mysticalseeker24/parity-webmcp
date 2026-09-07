@@ -1,5 +1,6 @@
 import { findProvider, SPECIALTY_LABELS, type Provider } from "../data/providers";
 import type { UnavailableReason } from "../lib/defineTool";
+import { REASONS } from "../lib/reasons";
 import type { BookingState } from "../store";
 
 /**
@@ -30,6 +31,6 @@ export function selectedProvider(state: BookingState): Provider | undefined {
 /** Always-live tools still need an unavailableReason; theirs is never read. */
 export const NEVER_UNAVAILABLE: UnavailableReason = {
   reason_code: "always_live",
-  reason: "This tool is always available.",
+  reason: REASONS.always_live,
   unlock_by: "",
 };

@@ -2,6 +2,7 @@ import * as z from "zod";
 import { accommodationLabels } from "../data/accommodations";
 import { findProvider } from "../data/providers";
 import { defineTool } from "../lib/defineTool";
+import { REASONS } from "../lib/reasons";
 import { ok, refuse } from "../lib/result";
 import { bookingStore } from "../store";
 import { providerSummary, specialtyLabel } from "./shared";
@@ -24,14 +25,10 @@ export const selectProvider = defineTool({
   }),
   voiceAliases: ["choose this doctor", "select provider"],
   available: (state) => state.stage === "browsing" || state.stage === "provider_selected",
-  unavailableReason: (state) => ({
-    reason_code: state.stage === "booked" ? "already_booked" : "hold_active",
-    reason:
-      state.stage === "booked"
-        ? "The appointment is already booked."
-        : "A slot is on hold; changing provider would lose it.",
-    unlock_by: state.stage === "booked" ? "" : "release_slot",
-  }),
+  unavailableReason: (state) => {
+    const code = state.stage === "booked" ? "already_booked" : "hold_active";
+    return { reason_code: code, reason: REASONS[code], unlock_by: code === "hold_active" ? "release_slot" : "" };
+  },
   execute: (input) => {
     const provider = findProvider(input.provider_id);
     if (!provider) {

@@ -73,12 +73,31 @@ export interface AuditEntry {
   readonly result: ToolResult | { readonly reason_code: string };
 }
 
+/**
+ * What changed in the live tool set on the last transition, and why each tool
+ * left. Written by the registry. Spec issue #262: the agent gets this through
+ * `get_booking_state.unavailable[]`, and Phase 5 reads it here to announce the
+ * same thing to a screen-reader user — one diff, both surfaces.
+ */
+export interface ToolChange {
+  readonly at: number;
+  readonly added: readonly string[];
+  readonly removed: readonly {
+    readonly tool: string;
+    readonly reason_code: string;
+    readonly reason: string;
+    readonly unlock_by: string;
+  }[];
+}
+
 export interface BookingState {
   readonly stage: Stage;
   readonly selectedProviderId: string | null;
   readonly lastSearch: LastSearch | null;
   readonly hasFetchedAvailability: boolean;
   readonly heldSlot: HeldSlot | null;
+  /** True when the last hold ended by timing out rather than being replaced. */
+  readonly holdExpired: boolean;
   readonly intake: Intake;
   readonly booking: Booking | null;
   readonly companion: Companion | null;
@@ -87,6 +106,7 @@ export interface BookingState {
   readonly takenSlotIds: readonly string[];
   /** Names of the tools currently registered. Written by the registry only. */
   readonly liveTools: readonly string[];
+  readonly lastToolChange: ToolChange | null;
 }
 
 export interface BookingActions {
@@ -94,13 +114,15 @@ export interface BookingActions {
   selectProvider(providerId: string): void;
   markAvailabilityFetched(): void;
   holdSlot(held: HeldSlot): void;
-  releaseHold(): void;
+  /** `expired` is set only by the hold timer; every other path is a release. */
+  releaseHold(cause?: "expired" | "released"): void;
   setIntake(patch: Intake): void;
   setCompanion(companion: Companion): void;
   confirmBooking(booking: Booking): void;
   markSlotTaken(slotId: string): void;
   appendAudit(entry: AuditEntry): void;
   setLiveTools(names: readonly string[]): void;
+  setLastToolChange(change: ToolChange): void;
   reset(): void;
 }
 
@@ -126,12 +148,14 @@ const INITIAL: BookingState = {
   lastSearch: null,
   hasFetchedAvailability: false,
   heldSlot: null,
+  holdExpired: false,
   intake: {},
   booking: null,
   companion: null,
   audit: [],
   takenSlotIds: [],
   liveTools: [],
+  lastToolChange: null,
 };
 
 let idCounter = 0;
@@ -156,15 +180,17 @@ export const bookingStore = createStore<BookingStore>()((set, get) => ({
       selectedProviderId: providerId,
       hasFetchedAvailability: false,
       heldSlot: null,
+      holdExpired: false,
     }),
 
   markAvailabilityFetched: () => set({ hasFetchedAvailability: true }),
 
-  holdSlot: (held) => set((s) => ({ heldSlot: held, stage: stageWithHold(s.intake) })),
+  holdSlot: (held) =>
+    set((s) => ({ heldSlot: held, holdExpired: false, stage: stageWithHold(s.intake) })),
 
-  releaseHold: () => {
+  releaseHold: (cause = "released") => {
     if (!get().heldSlot) return;
-    set({ heldSlot: null, stage: "provider_selected" });
+    set({ heldSlot: null, holdExpired: cause === "expired", stage: "provider_selected" });
   },
 
   setIntake: (patch) =>
@@ -191,6 +217,8 @@ export const bookingStore = createStore<BookingStore>()((set, get) => ({
   appendAudit: (entry) => set((s) => ({ audit: [...s.audit, entry].slice(-AUDIT_CAP) })),
 
   setLiveTools: (names) => set({ liveTools: [...names] }),
+
+  setLastToolChange: (change) => set({ lastToolChange: change }),
 
   reset: () => set(INITIAL),
 }));

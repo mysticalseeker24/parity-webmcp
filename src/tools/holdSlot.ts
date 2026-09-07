@@ -1,7 +1,9 @@
 import * as z from "zod";
 import { findSlot, slotLabel } from "../data/slots";
 import { defineTool } from "../lib/defineTool";
+import { REASONS } from "../lib/reasons";
 import { ok, refuse } from "../lib/result";
+import { startHoldTimer } from "../lib/timers";
 import { bookingStore, HOLD_TTL_MS } from "../store";
 
 /**
@@ -29,22 +31,18 @@ export const holdSlot = defineTool({
     state.stage === "intake_complete",
   unavailableReason: (state) => {
     if (state.stage === "booked") {
-      return {
-        reason_code: "already_booked",
-        reason: "The appointment is already booked.",
-        unlock_by: "",
-      };
+      return { reason_code: "already_booked", reason: REASONS.already_booked, unlock_by: "" };
     }
     if (state.stage === "browsing") {
       return {
         reason_code: "no_provider",
-        reason: "No provider is selected yet.",
+        reason: REASONS.no_provider,
         unlock_by: "select_provider",
       };
     }
     return {
       reason_code: "no_availability",
-      reason: "Availability has not been fetched for this provider yet.",
+      reason: REASONS.no_availability,
       unlock_by: "get_availability",
     };
   },
@@ -87,11 +85,11 @@ export const holdSlot = defineTool({
       );
     }
 
-    state.holdSlot({
-      slotId: slot.id,
-      providerId: slot.provider_id,
-      expiresAt: now + HOLD_TTL_MS,
-    });
+    const expiresAt = now + HOLD_TTL_MS;
+    state.holdSlot({ slotId: slot.id, providerId: slot.provider_id, expiresAt });
+    // One timer, owned by lib/timers.ts. Holding a different slot replaces it,
+    // so a superseded hold can never expire the current one.
+    startHoldTimer(slot.id, expiresAt);
 
     return ok(
       {

@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { isRealDate, SCHEDULE_END, SCHEDULE_START, slotsForProvider } from "../data/slots";
 import { defineTool } from "../lib/defineTool";
+import { REASONS } from "../lib/reasons";
 import { ok, refuse } from "../lib/result";
 import { bookingStore } from "../store";
 import { selectedProvider } from "./shared";
@@ -36,14 +37,10 @@ export const getAvailability = defineTool({
     state.stage === "provider_selected" ||
     state.stage === "slot_held" ||
     state.stage === "intake_complete",
-  unavailableReason: (state) => ({
-    reason_code: state.stage === "booked" ? "already_booked" : "no_provider",
-    reason:
-      state.stage === "booked"
-        ? "The appointment is already booked."
-        : "No provider is selected yet.",
-    unlock_by: state.stage === "booked" ? "" : "select_provider",
-  }),
+  unavailableReason: (state) => {
+    const code = state.stage === "booked" ? "already_booked" : "no_provider";
+    return { reason_code: code, reason: REASONS[code], unlock_by: code === "no_provider" ? "select_provider" : "" };
+  },
   execute: (input) => {
     const state = bookingStore.getState();
     const provider = selectedProvider(state);

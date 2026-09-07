@@ -2,6 +2,7 @@ import * as z from "zod";
 import { ACCOMMODATION } from "../data/accommodations";
 import { PROVIDERS, SPECIALTY, type Provider } from "../data/providers";
 import { defineTool } from "../lib/defineTool";
+import { REASONS } from "../lib/reasons";
 import { ok, refuse } from "../lib/result";
 import { bookingStore, type LastSearch } from "../store";
 import { providerSummary } from "./shared";
@@ -38,14 +39,10 @@ export const findProviders = defineTool({
   }),
   voiceAliases: ["find a doctor", "search providers"],
   available: (state) => state.stage === "browsing" || state.stage === "provider_selected",
-  unavailableReason: (state) => ({
-    reason_code: state.stage === "booked" ? "already_booked" : "hold_active",
-    reason:
-      state.stage === "booked"
-        ? "The appointment is already booked."
-        : "A slot is on hold; searching again would lose it.",
-    unlock_by: state.stage === "booked" ? "" : "release_slot",
-  }),
+  unavailableReason: (state) => {
+    const code = state.stage === "booked" ? "already_booked" : "hold_active";
+    return { reason_code: code, reason: REASONS[code], unlock_by: code === "hold_active" ? "release_slot" : "" };
+  },
   execute: (input) => {
     const eliminated: Record<string, number> = {};
     let pool: Provider[] = [...PROVIDERS];
