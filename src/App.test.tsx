@@ -65,6 +65,7 @@ describe("App shell", () => {
     // The step number is an aria-hidden badge, so it is in the text content but
     // not in the accessible name.
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+      "How this page talks to an agent",
       "Your booking",
       "1Find a provider",
       "2Choose a provider",
@@ -74,6 +75,7 @@ describe("App shell", () => {
       "Activity trail",
       "Live tools",
     ]);
+    expect(screen.getByRole("link", { name: "GitHub" })).toBeDefined();
     expect(screen.getByRole("region", { name: "Choose a provider" })).toBeDefined();
   });
 });

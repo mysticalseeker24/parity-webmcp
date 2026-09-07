@@ -307,9 +307,15 @@ describe("registry — the only caller of registerTool (CONVENTIONS.md §3)", ()
       import: "default",
       eager: true,
     });
+    // Strip template literals and line comments first: a documentation snippet
+    // that *shows* the call is not a call, and HowItWorks.tsx legitimately
+    // prints one on the page.
+    const stripped = (source: string) =>
+      source.replace(/`[^`]*`/g, "``").replace(/\/\/[^\n]*/g, "");
+
     const offenders = Object.entries(sources)
       .filter(([path]) => !/\.test\.tsx?$|\/test\/|\/types\//.test(path))
-      .filter(([, source]) => /\.registerTool\s*\(/.test(source))
+      .filter(([, source]) => /\.registerTool\s*\(/.test(stripped(source)))
       .map(([path]) => path.split("/").at(-1));
     expect(offenders).toEqual(["registry.ts"]);
   });
