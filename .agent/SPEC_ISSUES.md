@@ -2,7 +2,7 @@
 
 Read this before Phase 2. It maps open issues on `github.com/webmachinelearning/webmcp` (as of Sep 3–4, 2026) to concrete design decisions in Parity. Two reasons this file exists:
 
-1. The judging panel includes spec-adjacent people (Sarah Drasner filed #255; Alex Nahas created MCP-B). Designing *against the open issues* is the most credible form of "WebMCP Leverage" available.
+1. The judging panel is spec-adjacent: **Sarah Drasner filed #255**, and **Justin Rushing leads the browser platform #288 was observed on**. Designing *against the open issues* is the most credible form of "WebMCP Leverage" available — and it obliges precision, because two of the six will know these threads better than we do.
 2. At least three other Challenge entries are visible in these threads — **Release Airlock** (#288), **Incident Command** (#262), **Consequence** (#282) — all built around consent gates. That confirms the gate is table stakes in this field and the **accessibility inversion is the differentiator.** Do not let the gate eat the build.
 
 Cite issue numbers in code comments, the README, and the video. Judges will recognise them.

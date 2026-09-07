@@ -365,7 +365,15 @@ Four equally weighted criteria after a pass/fail viability screen.
 | **Potential Impact** | A named, specific, underserved audience and a real interface failure — plus the agentic-a11y regression nobody else is naming. |
 | **Creativity & Ambition** | The inversion itself: agent-readiness as the accessibility mechanism, proven by the call graph rather than asserted. |
 
-The panel includes the creator of MCP-B, OpenAI's Browser Platform Lead, and a Distinguished Engineer on Chrome. They will read the registry code. Write it to be read.
+**The panel** (confirmed): Andrew Galloni (VP, Cloudflare) · Justin Rushing (Browser Platform Lead, OpenAI) · Sean Roberts (VP Applied AI, Netlify) · Jude Gao (Agentic DX, Next.js) · Ilya Grigorik (Distinguished Engineer, Shopify) · Sarah Drasner (Area Tech Lead, AI Web Ecosystem, Google).
+
+Three consequences that should shape the code and the copy:
+
+1. **Sarah Drasner filed #255.** Our answer to it must be framed as *"state-driven registration achieves this today, from existing primitives"* — never as *"#255 is unnecessary."* She has thought about the problem longer than we have.
+2. **Justin Rushing leads the surface #288 was observed on.** The reproduction is a datapoint offered to the platform, not an accusation. It argues *for* host-mediated elicitation (#165) — something his team could ship — rather than against anything. Do not overclaim about ChatGPT's browser: we have not driven a model there, and he would know.
+3. **Four of six build platforms** (Cloudflare, Netlify, Vercel/Next.js, Shopify). They will read this as *does the pattern generalise* — the `defineTool` factory, the deploy story, the absence of a backend. Ilya Grigorik's other specialism is web performance; know the bundle numbers before anyone asks.
+
+They will read the registry code. Write it to be read.
 
 ---
 

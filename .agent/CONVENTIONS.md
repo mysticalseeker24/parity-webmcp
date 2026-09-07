@@ -22,7 +22,7 @@ There should be **no secrets in this project at all.** No backend, no API keys, 
 - **TypeScript strict everywhere.** `"strict": true`, `noUncheckedIndexedAccess`, no implicit or explicit `any`. If you reach for `any`, the type is wrong.
 - **Node 22+**, npm. React 19, Vite 6+.
 - Prettier + ESLint, run before every commit. Configs minimal and standard.
-- **Prefer explicit over clever.** Judges — including the creator of MCP-B and a Chrome Distinguished Engineer — will read `defineTool.ts` and `registry.ts`. Optimize for legibility, not brevity.
+- **Prefer explicit over clever.** The judging panel is six platform engineers — Cloudflare, OpenAI, Netlify, Next.js, Shopify and Google — and they will read `defineTool.ts` and `registry.ts`. Optimize for legibility, not brevity.
 - No dead code, no commented-out blocks left in. If unused, delete it.
 - Files stay small. If a module passes ~200 lines, it is doing two jobs.
 - Named exports over default exports, except React page components.

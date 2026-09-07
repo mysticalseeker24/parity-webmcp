@@ -84,9 +84,14 @@ made of closures.
 And the honest part. Spec issue **#288** records a host clicking a page's own
 Approve button. **We reproduced it:** CDP-injected input approved our card and
 the page logged it as a *trusted event*. So we say page-side approval is
-**necessary, not sufficient**, record `delta_ms` and modality, flag sub-second
-approvals — and add no CAPTCHA, because every trick that would stop #288 would
-exclude the users this exists for. The durable fix belongs in the user agent.
+**necessary, not sufficient**, record `delta_ms` and modality, and flag sub-second
+approvals. We add no CAPTCHA, because every trick that would stop #288 excludes
+the users this exists for.
+
+Offered as a datapoint, not a complaint: a page cannot tell injected input from a
+human, so the capability has to come from the layer that can. That is a concrete
+argument for **#165**'s `requestUserInteraction()`, which we feature-detect on
+every call and found **absent in Chrome 152**.
 
 > Building your website for agents is how you finally make it usable by the
 > humans your interface locked out. It is the same work, not two projects.

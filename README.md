@@ -240,7 +240,9 @@ node scripts/run-evals.mjs https://parity-webmcp.vercel.app/
 - a **JS-synthesised** click, control force-enabled by script first → rejected, `isTrusted: false`
 - a click **injected through Chrome's own input pipeline** → **approved**, logged as `via page card, pointer, trusted event`
 
-Automated input completed the human approval step and the page could not tell. That is precisely the gap #288 describes, reproduced deliberately against our own gate — and it is the reason this README says page-side approval is **necessary, not sufficient** rather than claiming it is airtight. A page cannot close this; the durable fix belongs in the user agent.
+Automated input completed the human approval step and the page could not tell. That is precisely the gap #288 describes, reproduced deliberately against our own gate — and it is why this README says page-side approval is **necessary, not sufficient** rather than claiming it is airtight.
+
+We offer it as a datapoint rather than a complaint. A page cannot distinguish injected input from a human, so the capability has to come from the layer that can: this is a concrete argument for host-mediated elicitation, [#165](https://github.com/webmachinelearning/webmcp/issues/165)'s `requestUserInteraction()`. We feature-detect it on every call and would route approval through it tomorrow — **it is absent in Chrome 152**, which is the other half of the finding. Until a host offers it, the most honest thing a page can do is record the evidence and show it to the person it affects.
 
 <p align="center">
   <img src="./docs/screenshots/audit-trail.png" alt="The activity trail, listing each tool call with its actor and an approval recorded as 'approved 2751 ms after request, via page card, pointer, trusted event'" width="880">
@@ -429,8 +431,8 @@ Building this turned up several behaviours that contradict `webmcp-types` and th
 - **Booking state resets on reload.** It is a demo with synthetic data; there is
   nothing to persist and no user data to keep.
 - **Spec issue #288 cannot be closed from inside a page.** Parity reproduces it,
-  records it, and says so — see [the evals](#adversarial-evals). The durable fix
-  belongs in the user agent.
+  records it, and says so — see [the evals](#adversarial-evals). It is an argument
+  for host-mediated elicitation (#165), which we already feature-detect.
 
 ---
 
