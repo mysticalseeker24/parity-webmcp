@@ -2,6 +2,7 @@ import * as z from "zod";
 import { ACCOMMODATION } from "../data/accommodations";
 import { isRealDate } from "../data/slots";
 import { defineTool } from "../lib/defineTool";
+import { REASONS } from "../lib/reasons";
 import { ok, refuse } from "../lib/result";
 import { bookingStore, intakeMissing, type Intake } from "../store";
 
@@ -37,17 +38,10 @@ export const setIntake = defineTool({
   available: (state) => state.stage === "slot_held" || state.stage === "intake_complete",
   unavailableReason: (state) => {
     if (state.stage === "booked") {
-      return {
-        reason_code: "already_booked",
-        reason: "The appointment is already booked.",
-        unlock_by: "",
-      };
+      return { reason_code: "already_booked", reason: REASONS.already_booked, unlock_by: "" };
     }
-    return {
-      reason_code: "no_hold",
-      reason: "No slot is on hold yet.",
-      unlock_by: "hold_slot",
-    };
+    const code = state.holdExpired ? "hold_expired" : "no_hold";
+    return { reason_code: code, reason: REASONS[code], unlock_by: "hold_slot" };
   },
   execute: (input, { now }) => {
     const provided = Object.entries(input).filter(([, v]) => v !== undefined);

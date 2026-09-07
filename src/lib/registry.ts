@@ -115,9 +115,20 @@ export function startRegistry(
     }
 
     const liveNames = new Set(live.map((tool) => tool.name));
-    for (const name of [...registered.keys()]) {
-      if (!liveNames.has(name)) unregister(name);
-    }
+
+    // Capture what left, and why, *before* unregistering — the reason is a
+    // function of the new state, which is exactly the context #262 says
+    // unregistration throws away. Phase 5 announces this to the human; the
+    // agent reads the same reasons from get_booking_state.unavailable[].
+    const removed = [...registered.keys()]
+      .filter((name) => !liveNames.has(name))
+      .map((name) => {
+        const tool = registered.get(name)!.tool;
+        return { tool: name, ...tool.unavailableReason(state) };
+      });
+    const added = live.filter((tool) => !registered.has(tool.name)).map((tool) => tool.name);
+
+    for (const entry of removed) unregister(entry.tool);
     for (const tool of live) {
       if (!registered.has(tool.name)) register(tool);
     }
@@ -127,7 +138,13 @@ export function startRegistry(
     const sorted = [...liveNames].sort();
     const current = state.liveTools;
     const changed = sorted.length !== current.length || sorted.some((n, i) => n !== current[i]);
-    if (changed) store.getState().setLiveTools(sorted);
+    if (changed) {
+      const next = store.getState();
+      next.setLiveTools(sorted);
+      if (added.length > 0 || removed.length > 0) {
+        next.setLastToolChange({ at: Date.now(), added, removed });
+      }
+    }
   }
 
   // Initial sync first, subscribe second: if the initial sync throws (a dev

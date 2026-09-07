@@ -2,7 +2,9 @@ import * as z from "zod";
 import { findProvider } from "../data/providers";
 import { findSlot, slotLabel } from "../data/slots";
 import { defineTool } from "../lib/defineTool";
+import { REASONS } from "../lib/reasons";
 import { refuse } from "../lib/result";
+import { clearHoldTimer } from "../lib/timers";
 import { bookingStore, intakeMissing } from "../store";
 
 /**
@@ -33,19 +35,18 @@ export const confirmBooking = defineTool({
   available: (state) => state.stage === "intake_complete" && state.heldSlot !== null,
   unavailableReason: (state) => {
     if (state.stage === "booked") {
-      return {
-        reason_code: "already_booked",
-        reason: "The appointment is already booked.",
-        unlock_by: "",
-      };
+      return { reason_code: "already_booked", reason: REASONS.already_booked, unlock_by: "" };
     }
     if (state.heldSlot === null) {
-      return { reason_code: "no_hold", reason: "No slot is on hold.", unlock_by: "hold_slot" };
+      // Distinguishing "expired" from "never held" is the whole point of #262:
+      // both leave the tool unregistered, but only one means "try again".
+      const code = state.holdExpired ? "hold_expired" : "no_hold";
+      return { reason_code: code, reason: REASONS[code], unlock_by: "hold_slot" };
     }
     const missing = intakeMissing(state.intake);
     return {
       reason_code: "intake_incomplete",
-      reason: `Intake is missing ${missing.join(", ")}.`,
+      reason: `Missing ${missing.join(", ")}.`,
       unlock_by: "set_intake",
     };
   },
@@ -65,6 +66,8 @@ export const confirmBooking = defineTool({
     // Re-check the slot at commit time; never trust the hold (CONVENTIONS.md §5).
     const slot = findSlot(held.slotId);
     if (!slot || state.takenSlotIds.includes(slot.id)) {
+      // The hold is gone, so its timer must go with it.
+      clearHoldTimer();
       bookingStore.getState().releaseHold();
       return refuse("conflict", "That slot was booked by someone else while it was held.", {
         field: "slot_id",
