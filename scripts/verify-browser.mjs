@@ -125,9 +125,15 @@ async function cdp(expression) {
   return result;
 }
 
-const PROBE = `(async () => {
+const PROBE = `(async () => { try {
   // Give the app's registration effect a moment to settle.
-  for (let i = 0; i < 40 && !document.querySelector('[data-testid="registry-listing"]'); i++) {
+  // Wait for the detection effect to have committed, not merely for the app to
+  // have rendered — the badge says "checking" for the first paint.
+  const settled = () => {
+    const badge = document.querySelector('[data-testid="detection"]');
+    return badge && !/checking/i.test(badge.textContent || "");
+  };
+  for (let i = 0; i < 60 && !settled(); i++) {
     await new Promise(r => setTimeout(r, 100));
   }
   const mc = document.modelContext;
@@ -205,7 +211,11 @@ const PROBE = `(async () => {
     out.afterSelect = after.map(t => t.name);
   }
   return out;
-})()`;
+} catch (e) {
+  // Without this the probe resolves undefined and the failure reads
+  // "probe returned undefined", which says nothing about what broke.
+  return { probeThrew: String(e && e.stack ? e.stack : e).slice(0, 600) };
+} })()`;
 
 const chrome = findChrome();
 if (!chrome) {
@@ -242,6 +252,11 @@ try {
   if (!r || typeof r !== "object") {
     throw new Error(`probe returned ${JSON.stringify(r)} — run with VERIFY_DEBUG=1 to see the raw CDP reply`);
   }
+  if (r.probeThrew) {
+    // Without this the failure reads "probe returned undefined", which says
+    // nothing about what actually broke on the page.
+    throw new Error(`the page threw during the probe:\n${r.probeThrew}`);
+  }
 
   console.log("WebMCP surface");
   console.log(`  info  execute() is called with: ${JSON.stringify(r.executeCallShape)}`);
@@ -251,8 +266,8 @@ try {
 
   console.log("\nRegistration");
   check(
-    "page reports DETECTED",
-    /modelContext DETECTED/.test(r.verdictText),
+    "page reports WebMCP detected",
+    /WebMCP: detected/.test(r.verdictText),
     JSON.stringify(r.verdictText),
   );
   const BROWSING = ["find_providers", "get_booking_state", "list_accommodations", "select_provider"];

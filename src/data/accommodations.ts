@@ -43,6 +43,25 @@ export const ACCOMMODATION_LABELS: Record<Accommodation, string> = {
   large_print_forms: "Large-print forms",
 };
 
+/**
+ * Decorative glyphs. Always rendered `aria-hidden` beside the label, never
+ * alone — an icon with no text is unreadable to a screen reader and ambiguous
+ * to everyone else (CONVENTIONS.md §6, "never rely on colour alone" applies to
+ * icons for the same reason).
+ */
+export const ACCOMMODATION_ICONS: Record<Accommodation, string> = {
+  wheelchair_accessible: "♿",
+  step_free_entrance: "⇔",
+  asl_interpreter: "🤟",
+  extended_appointment: "⏱",
+  low_sensory: "🔉",
+  ground_floor: "▤",
+  companion_seating: "👥",
+  guide_dog_welcome: "🦮",
+  hoist_transfer: "⇧",
+  large_print_forms: "🔎",
+};
+
 export function accommodationLabel(id: Accommodation): string {
   return ACCOMMODATION_LABELS[id];
 }

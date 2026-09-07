@@ -1,6 +1,7 @@
 import { bookingStore, newId, type Actor, type BookingState, type BookingStore } from "../store";
 import type { AnyDefinedTool } from "./defineTool";
-import type { ToolResult } from "./result";
+import { isToolResult, type ToolResult } from "./result";
+import { encodeToolArgs, parseToolResult } from "./webmcpInterop";
 import type { StoreApi } from "zustand/vanilla";
 
 /**
@@ -27,6 +28,8 @@ export interface Registry {
   /** Tools registered right now — the palette's fallback when WebMCP is absent. */
   readonly getLiveTools: () => readonly AnyDefinedTool[];
   readonly hasModelContext: boolean;
+  /** Look up a definition by name, live or not — for presentation metadata. */
+  readonly getTool: (name: string) => AnyDefinedTool | undefined;
   /** Run a tool through the local path, recording the audit entry. */
   readonly execute: (name: string, input: unknown) => Promise<ToolResult>;
   readonly stop: () => void;
@@ -54,6 +57,51 @@ function takeNextActor(): Actor {
   const actor = nextActor ?? "agent";
   nextActor = null;
   return actor;
+}
+
+/**
+ * The running registry. Components reach tools through this rather than
+ * importing them: the UI must go through the same execute path the agent uses,
+ * never a parallel handler (CONVENTIONS.md §3).
+ */
+let active: Registry | null = null;
+
+export function getRegistry(): Registry | null {
+  return active;
+}
+
+/**
+ * The one path a human-initiated action takes. Used by every button in the UI
+ * and by the command palette.
+ *
+ * When the browser provides WebMCP we deliberately route through
+ * `executeTool()` — the *same* call the agent makes — rather than calling the
+ * tool's closure directly. That is what makes "one registry, two callers"
+ * literally true rather than a claim in the README. The local path is the
+ * fallback for a browser without WebMCP.
+ */
+export async function executeAsHuman(name: string, input: unknown): Promise<ToolResult> {
+  const registry = active;
+  if (!registry) throw new Error("[registry] executeAsHuman before startRegistry");
+
+  setNextActor("human");
+
+  const mc = document.modelContext;
+  if (registry.hasModelContext && typeof mc?.executeTool === "function") {
+    const tools = await mc.getTools();
+    const tool = tools.find((t) => t.name === name);
+    if (tool) {
+      const raw = await mc.executeTool(tool, encodeToolArgs((input ?? {}) as Record<string, unknown>));
+      const parsed = parseToolResult(raw);
+      if (isToolResult(parsed)) return parsed;
+      // Shouldn't happen: defineTool guarantees the envelope. Don't strand the
+      // caller if it does.
+      return { ok: false, kind: "refused", reason: `${name} returned an unreadable result.` };
+    }
+  }
+
+  // No WebMCP, or the browser has not caught up with the live set yet.
+  return registry.execute(name, input);
 }
 
 export function startRegistry(
@@ -152,9 +200,10 @@ export function startRegistry(
   sync(store.getState());
   const unsubscribe = store.subscribe(sync);
 
-  return {
+  const registry: Registry = {
     getLiveTools: () => [...registered.values()].map((entry) => entry.tool),
     hasModelContext: modelContext !== undefined,
+    getTool: (name) => tools.find((t) => t.name === name),
     execute: async (name, input) => {
       const entry = registered.get(name);
       const actor = takeNextActor();
@@ -177,6 +226,10 @@ export function startRegistry(
     stop: () => {
       unsubscribe();
       for (const name of [...registered.keys()]) unregister(name);
+      if (active === registry) active = null;
     },
   };
+
+  active = registry;
+  return registry;
 }
