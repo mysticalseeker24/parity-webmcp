@@ -159,12 +159,20 @@ export function Calendar() {
 
   async function hold(slot: Slot) {
     setRefusal(null);
-    const result = await executeAsHuman("hold_slot", { slot_id: slot.id });
-    if (isRefusal(result)) {
-      setRefusal(result.reason);
-      setMessage(`Could not hold ${slotLabel(slot)}. ${result.reason}`);
-    } else {
-      setMessage(result.human_summary);
+    try {
+      const result = await executeAsHuman("hold_slot", { slot_id: slot.id });
+      if (isRefusal(result)) {
+        setRefusal(result.reason);
+        setMessage(`Could not hold ${slotLabel(slot)}. ${result.reason}`);
+      } else {
+        setMessage(result.human_summary);
+      }
+    } catch (error) {
+      // A thrown error would otherwise leave the grid silent, which reads as a
+      // dead control to someone relying on the announcement.
+      const reason = error instanceof Error ? error.message : "The slot could not be held.";
+      setRefusal(reason);
+      setMessage(`Could not hold ${slotLabel(slot)}. ${reason}`);
     }
   }
 

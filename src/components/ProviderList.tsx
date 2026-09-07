@@ -39,14 +39,24 @@ export function ProviderList() {
 
   async function select(providerId: string) {
     setBusy(providerId);
-    const result = await executeAsHuman("select_provider", { provider_id: providerId });
-    setBusy(null);
-    setRefusals((prev) => {
-      const next = { ...prev };
-      if (isRefusal(result)) next[providerId] = result.reason;
-      else delete next[providerId];
-      return next;
-    });
+    try {
+      const result = await executeAsHuman("select_provider", { provider_id: providerId });
+      setRefusals((prev) => {
+        const next = { ...prev };
+        if (isRefusal(result)) next[providerId] = result.reason;
+        else delete next[providerId];
+        return next;
+      });
+    } catch (error) {
+      setRefusals((prev) => ({
+        ...prev,
+        [providerId]: error instanceof Error ? error.message : "Could not select that provider.",
+      }));
+    } finally {
+      // Always re-enable. A button left disabled by a thrown error is a dead
+      // control, and disabling a focused one hands focus to <body>.
+      setBusy(null);
+    }
   }
 
   return (

@@ -54,9 +54,17 @@ export function BookingSummary() {
   async function confirm() {
     if (!heldSlot) return;
     setBusy(true);
-    const result = await executeAsHuman("confirm_booking", { slot_id: heldSlot.slotId });
-    setBusy(false);
-    setConfirmMessage(isRefusal(result) ? result.reason : result.human_summary);
+    try {
+      const result = await executeAsHuman("confirm_booking", { slot_id: heldSlot.slotId });
+      setConfirmMessage(isRefusal(result) ? result.reason : result.human_summary);
+    } catch (error) {
+      setConfirmMessage(
+        error instanceof Error ? error.message : "The booking could not be confirmed.",
+      );
+    } finally {
+      // Always re-enable; a thrown error must not leave a dead button.
+      setBusy(false);
+    }
   }
 
   return (

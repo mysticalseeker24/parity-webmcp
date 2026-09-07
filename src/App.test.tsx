@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import App from "./App";
 import { clearHoldTimer } from "./lib/timers";
@@ -162,6 +162,39 @@ describe("provider list", () => {
       name: /Accommodations offered by Dr\. Amara Okafor/,
     });
     expect(within(list).getByText("Wheelchair accessible")).toBeDefined();
+  });
+});
+
+describe("a thrown tool never leaves a dead control", () => {
+  // The palette had this bug in the wild: a rejected run left `busy` true, the
+  // button disabled forever, and — because disabling a focused control hands
+  // focus to <body> — Escape stopped working too. Every surface that disables a
+  // control while a tool runs is checked here.
+  it("re-enables the search button when find_providers throws", async () => {
+    const tool = registry!.getTool("find_providers")!;
+    const spy = vi.spyOn(tool, "run").mockRejectedValue(new Error("network is down"));
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Find providers" }));
+
+    await waitFor(() => {
+      const button = screen.getByRole("button", { name: "Find providers" }) as HTMLButtonElement;
+      expect(button.disabled).toBe(false);
+    });
+    spy.mockRestore();
+  });
+
+  it("re-enables the provider button and shows why when select_provider throws", async () => {
+    await registry!.execute("find_providers", { specialty: "neurology" });
+    const tool = registry!.getTool("select_provider")!;
+    const spy = vi.spyOn(tool, "run").mockRejectedValue(new Error("network is down"));
+
+    render(<App />);
+    const button = (await screen.findAllByRole("button", { name: /^Select Dr\./ }))[0]!;
+    await user.click(button);
+
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    spy.mockRestore();
   });
 });
 

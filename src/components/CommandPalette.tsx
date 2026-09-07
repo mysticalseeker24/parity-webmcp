@@ -128,6 +128,13 @@ export function CommandPalette() {
   const { tools, viaBrowser } = useLiveTools(open || pending !== null);
   const inputRef = useRef<HTMLInputElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const runButtonRef = useRef<HTMLButtonElement>(null);
+  // The window-level Escape handler is registered once, so it reads current
+  // state through refs rather than closing over the first render's values.
+  const openRef = useRef(false);
+  const selectedRef = useRef<PaletteTool | null>(null);
+  const closeRef = useRef<() => void>(() => {});
+  const refocusAfterRun = useRef(false);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -135,6 +142,22 @@ export function CommandPalette() {
         event.preventDefault();
         openerRef.current = document.activeElement as HTMLElement;
         setOpen((wasOpen) => !wasOpen);
+        return;
+      }
+      // Escape is handled at the window while the palette is open, not only on
+      // the elements inside it. Focus can legitimately be outside the dialog —
+      // a control that becomes disabled hands focus back to <body> — and Escape
+      // must still close rather than appearing dead.
+      if (event.key === "Escape" && openRef.current) {
+        event.preventDefault();
+        if (selectedRef.current) {
+          setSelected(null);
+          setHeardAs(null);
+          setResult(null);
+          requestAnimationFrame(() => inputRef.current?.focus());
+        } else {
+          closeRef.current();
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -144,6 +167,20 @@ export function CommandPalette() {
   useEffect(() => {
     if (open && !selected) inputRef.current?.focus();
   }, [open, selected]);
+
+  /**
+   * Put focus back on Run once it is enabled again.
+   *
+   * Disabling a focused button hands focus to `<body>`, which leaves a keyboard
+   * user with nothing selected and no obvious way back. Restoring it has to
+   * happen after the re-render that clears `busy`, or the element is still
+   * disabled and `focus()` is a no-op.
+   */
+  useEffect(() => {
+    if (busy || !refocusAfterRun.current) return;
+    refocusAfterRun.current = false;
+    runButtonRef.current?.focus();
+  }, [busy, result]);
 
   // Voice asks for a form to be opened, pre-filled. It never asks for a tool to
   // be run — the user still presses Run (see lib/paletteBridge.ts).
@@ -167,22 +204,56 @@ export function CommandPalette() {
     setPending(null);
   }, [pending, tools]);
 
+  openRef.current = open;
+  selectedRef.current = selected;
+  const searching = query.trim() !== "";
+
   const matches = useMemo(() => {
+    const groupRank = (tool: PaletteTool) => {
+      const i = GROUP_ORDER.indexOf(tool.group as ToolGroup);
+      return i === -1 ? 99 : i;
+    };
+
+    // No query: workflow order, so the palette reads as the shape of the task
+    // (#255).
     const q = query.trim().toLowerCase();
-    const filtered = q
-      ? tools.filter(
-          (tool) =>
-            tool.label.toLowerCase().includes(q) ||
-            tool.name.toLowerCase().includes(q) ||
-            tool.description.toLowerCase().includes(q),
-        )
-      : tools;
-    // Workflow order, so the palette reads as the shape of the task (#255).
-    return [...filtered].sort((a, b) => {
-      const ga = GROUP_ORDER.indexOf(a.group as ToolGroup);
-      const gb = GROUP_ORDER.indexOf(b.group as ToolGroup);
-      return (ga === -1 ? 99 : ga) - (gb === -1 ? 99 : gb) || a.label.localeCompare(b.label);
-    });
+    if (q === "") {
+      return [...tools].sort(
+        (a, b) => groupRank(a) - groupRank(b) || a.label.localeCompare(b.label),
+      );
+    }
+
+    /**
+     * With a query, relevance has to beat workflow order. Typing "find" used to
+     * surface `list_accommodations` first — it matches only because its
+     * description mentions `find_providers`, and it sorted first because its
+     * group is "orient". Pressing Enter then opened the wrong tool.
+     */
+    const score = (tool: PaletteTool) => {
+      const name = tool.name.toLowerCase();
+      const label = tool.label.toLowerCase();
+      if (name === q || label === q) return 1000;
+      if (name.startsWith(q)) return 900;
+      if (label.startsWith(q)) return 800;
+      // A word inside the name, e.g. "providers" matching find_providers.
+      if (name.split(/[_\s]+/).some((word) => word.startsWith(q))) return 700;
+      if (label.split(/\s+/).some((word) => word.startsWith(q))) return 600;
+      if (name.includes(q)) return 500;
+      if (label.includes(q)) return 400;
+      if (tool.description.toLowerCase().includes(q)) return 100;
+      return 0;
+    };
+
+    return tools
+      .map((tool) => ({ tool, score: score(tool) }))
+      .filter((entry) => entry.score > 0)
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          groupRank(a.tool) - groupRank(b.tool) ||
+          a.tool.label.localeCompare(b.tool.label),
+      )
+      .map((entry) => entry.tool);
   }, [tools, query]);
 
   useEffect(() => setActiveIndex(0), [query, tools.length]);
@@ -197,6 +268,7 @@ export function CommandPalette() {
     // Restore focus to whatever opened it — never drop focus to <body>.
     openerRef.current?.focus();
   }
+  closeRef.current = close;
 
   function choose(tool: PaletteTool) {
     setSelected(tool);
@@ -209,11 +281,27 @@ export function CommandPalette() {
 
   async function run(tool: PaletteTool) {
     setBusy(true);
-    // The same path the agent takes: setNextActor("human") then executeTool()
-    // with a JSON string, then parseToolResult(). See registry.executeAsHuman.
-    const outcome = await executeAsHuman(tool.name, valuesToArgs(tool.fields, values));
-    setBusy(false);
-    setResult(outcome);
+    try {
+      // The same path the agent takes: setNextActor("human") then executeTool()
+      // with a JSON string, then parseToolResult(). See registry.executeAsHuman.
+      setResult(await executeAsHuman(tool.name, valuesToArgs(tool.fields, values)));
+    } catch (error) {
+      // A thrown error must never leave the button stuck disabled. A disabled
+      // control also drops focus to <body>, which is how a failed run used to
+      // take Escape down with it.
+      setResult({
+        ok: false,
+        kind: "refused",
+        reason: error instanceof Error ? error.message : "The command could not be run.",
+        next: "get_booking_state",
+      });
+    } finally {
+      setBusy(false);
+      // Focus is restored by the effect below, not here: at this point React
+      // has not re-rendered, the button is still disabled, and focus() on a
+      // disabled element does nothing.
+      refocusAfterRun.current = true;
+    }
   }
 
   if (!open) {
@@ -261,13 +349,9 @@ export function CommandPalette() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="palette-title"
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && selected) {
-          e.preventDefault();
-          setSelected(null);
-          inputRef.current?.focus();
-        }
-      }}
+      /* Escape is handled once, at the window — see the effect above. Handling
+         it here too would stop the event before it got there whenever focus
+         happened to be inside the dialog. */
       className="fixed inset-0 z-50 flex items-start justify-center bg-ink/40 p-4 pt-16"
     >
       <div className="w-full max-w-2xl border-[1.5px] border-ink bg-stock p-4 ">
@@ -307,42 +391,45 @@ export function CommandPalette() {
             </p>
 
             <ul id="palette-listbox" role="listbox" aria-label="Available commands" className="mt-2 max-h-80 overflow-y-auto">
-              {GROUP_ORDER.concat("other" as ToolGroup).map((group) => {
-                const inGroup = matches.filter((t) => t.group === group);
-                if (inGroup.length === 0) return null;
-                return (
-                  <li key={group} role="presentation">
-                    <p role="presentation" className="mt-2 px-1 text-xs font-bold uppercase tracking-wide text-ink-soft">
-                      {GROUP_LABELS[group] ?? group}
-                    </p>
-                    <ul role="group" aria-label={GROUP_LABELS[group] ?? group}>
-                      {inGroup.map((tool) => {
-                        const index = matches.indexOf(tool);
-                        const active = index === activeIndex;
-                        return (
-                          <li
-                            key={tool.name}
-                            id={`palette-option-${tool.name}`}
-                            role="option"
-                            aria-selected={active}
-                            onClick={() => choose(tool)}
-                            className={`cursor-pointer rounded px-2 py-1.5 ${
-                              active ? "bg-ink text-stock" : "text-ink"
-                            }`}
-                          >
-                            <span className="font-semibold">{tool.label}</span>
-                            <span className={active ? "text-stock" : "text-ink-soft"}>
-                              {" · "}
-                              <code className="font-mono text-xs">{tool.name}</code>
-                              {!tool.known && " · not in the local map"}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </li>
-                );
-              })}
+              {/* Searching: a flat list in relevance order, so what the DOM
+                  shows is the order Enter will follow. Grouping while filtering
+                  put the best match underneath a heading it did not belong to,
+                  and the first row on screen was not the row Enter opened. */}
+              {searching
+                ? matches.map((tool, index) => (
+                    <Option
+                      key={tool.name}
+                      tool={tool}
+                      active={index === activeIndex}
+                      onChoose={choose}
+                    />
+                  ))
+                : /* Idle: workflow order, so the palette reads as the shape of
+                     the task (#255). */
+                  GROUP_ORDER.concat("other" as ToolGroup).map((group) => {
+                    const inGroup = matches.filter((t) => t.group === group);
+                    if (inGroup.length === 0) return null;
+                    return (
+                      <li key={group} role="presentation">
+                        <p
+                          role="presentation"
+                          className="mt-2 px-1 font-display text-xs font-bold uppercase tracking-wide text-ink-soft"
+                        >
+                          {GROUP_LABELS[group] ?? group}
+                        </p>
+                        <ul role="group" aria-label={GROUP_LABELS[group] ?? group}>
+                          {inGroup.map((tool) => (
+                            <Option
+                              key={tool.name}
+                              tool={tool}
+                              active={matches.indexOf(tool) === activeIndex}
+                              onChoose={choose}
+                            />
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  })}
             </ul>
           </>
         ) : (
@@ -384,6 +471,7 @@ export function CommandPalette() {
 
             <div className="flex flex-wrap gap-3">
               <button
+                ref={runButtonRef}
                 type="submit"
                 disabled={busy}
                 className="rounded bg-ink px-4 py-2 font-semibold text-stock hover:bg-ink-soft disabled:opacity-60"
@@ -438,6 +526,34 @@ export function CommandPalette() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** One row in the listbox. Identical whether the list is grouped or flat. */
+function Option({
+  tool,
+  active,
+  onChoose,
+}: {
+  tool: PaletteTool;
+  active: boolean;
+  onChoose: (tool: PaletteTool) => void;
+}) {
+  return (
+    <li
+      id={`palette-option-${tool.name}`}
+      role="option"
+      aria-selected={active}
+      onClick={() => onChoose(tool)}
+      className={`cursor-pointer px-2 py-1.5 ${active ? "bg-ink text-stock" : "text-ink"}`}
+    >
+      <span className="font-semibold">{tool.label}</span>
+      <span className={active ? "text-stock" : "text-ink-soft"}>
+        {" · "}
+        <code className="font-display text-xs">{tool.name}</code>
+        {!tool.known && " · not in the local map"}
+      </span>
+    </li>
   );
 }
 

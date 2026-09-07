@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import * as z from "zod";
@@ -57,7 +57,7 @@ describe("palette — accessible combobox", () => {
     expect(document.activeElement).toBe(combobox);
 
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(opener);
   });
 
@@ -105,6 +105,84 @@ describe("palette — accessible combobox", () => {
       "Orientation",
       "Find a provider",
     ]);
+  });
+});
+
+describe("palette — search ranks by relevance, not workflow order", () => {
+  it("puts the tool you named first, not one whose description mentions it", async () => {
+    // Regression: typing "find" made list_accommodations the active option — it
+    // matches only because its description mentions find_providers, and it
+    // sorted first because its group is "orient". Enter then opened the wrong
+    // tool, one with no fields, which read as "the button does nothing".
+    const combobox = await openPalette();
+    await user.type(combobox, "find");
+
+    await waitFor(() => {
+      const options = within(screen.getByRole("listbox")).getAllByRole("option");
+      expect(options[0]?.textContent).toMatch(/find_providers/);
+      expect(options[0]?.getAttribute("aria-selected")).toBe("true");
+    });
+    expect(combobox.getAttribute("aria-activedescendant")).toBe("palette-option-find_providers");
+  });
+
+  it("Enter on that query opens Find providers, with its specialty field", async () => {
+    const combobox = await openPalette();
+    await user.type(combobox, "find");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByLabelText(/Medical specialty needed/)).toBeDefined();
+    expect(screen.getByRole("button", { name: /^Run Find providers$/ })).toBeDefined();
+  });
+
+  it("ranks an exact tool name above a partial one", async () => {
+    const combobox = await openPalette();
+    await user.type(combobox, "select_provider");
+    await waitFor(() => {
+      const options = within(screen.getByRole("listbox")).getAllByRole("option");
+      expect(options[0]?.textContent).toMatch(/select_provider/);
+    });
+  });
+
+  it("still uses workflow order when there is no query", async () => {
+    await openPalette();
+    const groups = within(screen.getByRole("listbox")).getAllByRole("group");
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
+      "Orientation",
+      "Find a provider",
+    ]);
+  });
+});
+
+describe("palette — a failed run cannot strand the dialog", () => {
+  it("re-enables Run and keeps focus inside after the tool throws", async () => {
+    const combobox = await openPalette();
+    await user.type(combobox, "find");
+    await user.keyboard("{Enter}");
+
+    const tool = registry!.getTool("find_providers")!;
+    const spy = vi.spyOn(tool, "run").mockRejectedValue(new Error("network is down"));
+
+    await user.selectOptions(screen.getByLabelText(/Medical specialty needed/), "neurology");
+    await user.click(screen.getByRole("button", { name: /^Run Find providers$/ }));
+
+    // Busy must reset, or the button stays disabled forever — and a disabled
+    // control hands focus to <body>, which used to take Escape down with it.
+    await waitFor(() => {
+      const run = screen.getByRole("button", { name: /^Run Find providers$/ }) as HTMLButtonElement;
+      expect(run.disabled).toBe(false);
+    });
+    expect(document.activeElement).not.toBe(document.body);
+    spy.mockRestore();
+  });
+
+  it("Escape closes even when focus has fallen outside the dialog", async () => {
+    await openPalette();
+    // Simulate focus being lost, which is what a disabled control does.
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });
 
@@ -295,10 +373,10 @@ describe("palette — the whole booking, keyboard only", () => {
       // Escape from the form returns to the list; Escape again closes. Two
       // levels, so a mis-typed argument does not lose the whole palette.
       await user.keyboard("{Escape}");
-      const search = await screen.findByRole("combobox");
+      const search = await screen.findByRole("combobox", { name: /Search available commands/ });
       search.focus();
       await user.keyboard("{Escape}");
-      await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     }
 
     await run(/find_providers/, async () => {

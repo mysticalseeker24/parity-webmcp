@@ -60,18 +60,24 @@ export function IntakeForm() {
     event.preventDefault();
     setBusy(true);
     setSaved("");
-    const result = await executeAsHuman("set_intake", {
-      patient_name: name.trim() === "" ? undefined : name,
-      dob: dob.trim() === "" ? undefined : dob,
-      reason: reason.trim() === "" ? undefined : reason,
-      accommodations,
-    });
-    setBusy(false);
-    if (isRefusal(result)) {
-      setError({ ...(result.field ? { field: result.field } : {}), reason: result.reason });
-    } else {
-      setError(null);
-      setSaved(result.human_summary);
+    try {
+      const result = await executeAsHuman("set_intake", {
+        patient_name: name.trim() === "" ? undefined : name,
+        dob: dob.trim() === "" ? undefined : dob,
+        reason: reason.trim() === "" ? undefined : reason,
+        accommodations,
+      });
+      if (isRefusal(result)) {
+        setError({ ...(result.field ? { field: result.field } : {}), reason: result.reason });
+      } else {
+        setError(null);
+        setSaved(result.human_summary);
+      }
+    } catch (err) {
+      setError({ reason: err instanceof Error ? err.message : "Could not save the details." });
+    } finally {
+      // Always re-enable; a thrown error must not leave a dead button.
+      setBusy(false);
     }
   }
 

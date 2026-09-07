@@ -23,13 +23,19 @@ export function SearchForm() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
-    const result = await executeAsHuman("find_providers", {
-      specialty,
-      accommodations,
-      insurance: insurance === "" ? undefined : insurance,
-    });
-    setBusy(false);
-    setMessage(isRefusal(result) ? result.reason : result.human_summary);
+    try {
+      const result = await executeAsHuman("find_providers", {
+        specialty,
+        accommodations,
+        insurance: insurance === "" ? undefined : insurance,
+      });
+      setMessage(isRefusal(result) ? result.reason : result.human_summary);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The search could not be run.");
+    } finally {
+      // Always re-enable; a thrown error must not leave a dead button.
+      setBusy(false);
+    }
   }
 
   return (
