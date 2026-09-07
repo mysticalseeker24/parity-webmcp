@@ -68,6 +68,7 @@ describe("App shell", () => {
       "2. Choose a provider",
       "3. Pick a time",
       "4. Patient details",
+      "What just happened",
       "Live tools",
     ]);
   });

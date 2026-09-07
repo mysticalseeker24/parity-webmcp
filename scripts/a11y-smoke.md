@@ -59,6 +59,54 @@ otherwise a state change elsewhere would steal focus mid-typing.
 
 ---
 
+## Command palette (Phase 5)
+
+`src/components/CommandPalette.test.tsx`. The palette must be able to complete a
+full booking with keyboard only, no mouse, no agent — a definition-of-done item
+in `PROJECT_SPEC.md` §4, not a nice-to-have.
+
+| Requirement | Status |
+|---|---|
+| Opens with `Ctrl`/`Cmd`+`K` and with a visible button | auto |
+| Labelled `combobox` controlling a `listbox` | auto |
+| `aria-activedescendant` tracks the active option | auto |
+| Result count announced in a live region, updating as you type | auto |
+| Arrow keys move the active option | auto |
+| `Enter` opens the selected command's form | auto |
+| `Escape` from the form returns to the list; `Escape` again closes | auto |
+| Closing restores focus to whatever opened it | auto |
+| Commands grouped in workflow order (#255) | auto |
+| Every generated field's label is its schema `description` (#286) | auto |
+| Required fields marked in text, not colour | auto |
+| Refusal rendered as kind + reason + an actionable next step | auto |
+
+**Full booking, palette only, keyboard only** — *"completes search → select →
+hold → intake with no mouse and no agent"* drives `find_providers`,
+`select_provider`, `get_availability`, `hold_slot` and `set_intake` entirely
+through the palette, reaching `intake_complete`.
+
+One thing this surfaced: `Escape` needs two levels. Collapsing it to a single
+"close everything" would throw away a half-filled form on a mis-key, which is
+worse for someone typing slowly with a switch or on-screen keyboard.
+
+## Announcements
+
+`src/lib/announcer.test.ts`.
+
+| Requirement | Status |
+|---|---|
+| Every execution announces, agent-initiated included | auto |
+| The actor is named — "Agent found…" / "You found…" | auto |
+| Wording comes from the tool's own `announce()`, never a call site | auto |
+| A tool leaving the palette announces *why*, from `reasons.ts` (#262) | auto |
+| Hold expiry announces as an interruption | auto |
+| Successes polite, every refusal assertive | auto |
+| A tool whose `announce()` throws does not take the live region down | auto |
+| Identical repeated announcements are re-announced, not swallowed | read |
+
+The same lines are also rendered on screen in *What just happened*, so a sighted
+user can see that the agent changed something too.
+
 ## Forms
 
 | Requirement | Status |
