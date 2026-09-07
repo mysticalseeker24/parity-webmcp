@@ -8,10 +8,11 @@
 
 <p align="center">
   <a href="https://parity-webmcp.vercel.app/"><strong>Live app</strong></a> ·
+  <a href="https://github.com/mysticalseeker24/parity-webmcp">Repo</a> ·
   <a href="#verify-it-yourself">Verify it yourself</a> ·
   <a href="#adversarial-evals">Evals</a> ·
   <a href="#how-webmcp-is-implemented">Implementation</a> ·
-  <a href="./docs/DEVPOST.md">Devpost copy</a>
+  <a href="https://devpost.com/software/parity-uy7opk"><strong>Devpost</strong></a>
 </p>
 
 <p align="center">

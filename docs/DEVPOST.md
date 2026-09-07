@@ -1,5 +1,6 @@
 # Parity — Devpost submission copy
 
+**Devpost:** <https://devpost.com/software/parity-uy7opk>
 **Live:** <https://parity-webmcp.vercel.app/>
 **Repo:** <https://github.com/mysticalseeker24/parity-webmcp>
 **Thumbnail:** `docs/brand/devpost-thumbnail.png`
