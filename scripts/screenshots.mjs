@@ -190,6 +190,24 @@ try {
     console.log(`  wrote ${OUT}/hero.png`);
   }
 
+  // The command palette, open, listing what getTools() returned.
+  await send("Input.dispatchKeyEvent", {
+    type: "keyDown", key: "k", code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 2,
+  });
+  await send("Input.dispatchKeyEvent", {
+    type: "keyUp", key: "k", code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 2,
+  });
+  await sleep(700);
+  await evaluate(`(() => {
+    const d = document.querySelector('[role="dialog"]');
+    if (d) d.firstElementChild.id = "shot-palette";
+    return !!d;
+  })()`);
+  await shotElement("#shot-palette", "command-palette.png");
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await sleep(400);
+
   // Drive to intake_complete so the interesting states are on screen.
   await callTool("find_providers", { specialty: "neurology" });
   await callTool("select_provider", { provider_id: "p01" });
@@ -200,6 +218,24 @@ try {
     patient_name: "Rosa Quintero", dob: "1984-03-09", reason: "migraine",
   });
   await sleep(500);
+
+  // The availability grid — the control the whole product argument rests on.
+  await evaluate(`(() => {
+    const h = [...document.querySelectorAll("h2")].find(x => /Pick a time/.test(x.textContent||""));
+    const s = h && h.closest("section");
+    if (s) s.id = "shot-calendar";
+    return !!s;
+  })()`);
+  await shotElement("#shot-calendar", "calendar.png");
+
+  // The provider list, with accommodations as icon + words.
+  await evaluate(`(() => {
+    const h = [...document.querySelectorAll("h2")].find(x => /Choose a provider/.test(x.textContent||""));
+    const s = h && h.closest("section");
+    if (s) s.id = "shot-providers";
+    return !!s;
+  })()`);
+  await shotElement("#shot-providers", "provider-list.png");
 
   // Open the lockstep panel.
   await evaluate(`(() => {

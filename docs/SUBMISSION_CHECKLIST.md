@@ -1,7 +1,7 @@
 # Submission checklist
 
 Every line from `.agent/PROJECT_SPEC.md` §12, either ticked with the evidence, or explained.
-Verified 2026-09-07 against commit `3b79942` and <https://parity-webmcp.vercel.app/>.
+Verified 2026-09-07 against `main` and <https://parity-webmcp.vercel.app/>.
 
 ---
 
@@ -25,7 +25,8 @@ Verified 2026-09-07 against commit `3b79942` and <https://parity-webmcp.vercel.a
       keep it that way.
 
 - [ ] **Demo video under 3 minutes, public on YouTube, with audio** — **NOT DONE.** Script is ready
-      at `docs/VIDEO_SCRIPT.md` (targets 2:45). To be recorded once the build is final.
+      at `docs/VIDEO_SCRIPT.md`, cut to **2:10** with sparse narration so the screen carries the
+      argument. To be recorded once the build is final.
 
 - [x] **Text description covering all four required points** — `docs/DEVPOST.md`, in the required
       order: why the use case fits WebMCP · how it improves UX · what people and agents can do
@@ -92,10 +93,11 @@ closed, that is a question for the organisers.
 | Gate | Result |
 |---|---|
 | `npm run typecheck` | clean |
-| `npm test` | **237 passing**, 15 files |
+| `npm test` | **328 passing**, 18 files |
 | `npm run build` | 5 static files, no functions |
 | `npm run verify:browser` | **22 checks passing** against real Chrome 152 + real WebMCP |
-| `scripts/run-evals.mjs` | 6 structural eval cases run against the live deployment |
+| `scripts/run-evals.mjs` | 7 structural eval cases run against the live deployment |
+| `scripts/screenshots.mjs` | 9 screenshots captured from the live deployment |
 
 ---
 
@@ -109,9 +111,9 @@ closed, that is a question for the organisers.
 3. **Case 6a reproduced #288 at the mechanism level**: CDP-injected input approved the page's own
    card and was logged as a trusted event. This is documented as the reason page-side approval is
    called *necessary, not sufficient*, and is not claimed to be solved.
-4. **Tier 2 and Tier 3 tools are not built.** Eight of nineteen tools ship. `get_provider_detail`
-   in particular is absent, which is why the injected provider bio has no path to the agent in this
-   build — worth stating, because it makes Case 1a a weaker result than it first appears.
+4. **All 19 tools now ship**, including `get_provider_detail`. That closes the gap noted earlier —
+   the injected provider bio now has a real path to an agent, through the one tool annotated
+   `untrustedContentHint`. It also means eval Case 1a must be re-run before it is quoted.
 5. **`find_providers`' 5-result cap is never exercised** by the fixture: three providers per
    specialty. The truncation code and its note are written and unit-asserted, but no test proves the
    cap fires.
