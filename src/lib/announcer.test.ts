@@ -62,7 +62,10 @@ describe("announcer — names the actor on every execution", () => {
     };
     heard = [];
     await registry!.execute("hold_slot", { slot_id: avail.data.slots[0]!.id });
-    expect(texts()[0]).toMatch(/^Agent held \w+day \d+ \w+, \d\d:\d\d, held for 10 minutes\.$/);
+    // A stage change is also announced, so pick out the tool's own line.
+    expect(texts().find((t) => t.startsWith("Agent held"))).toMatch(
+      /^Agent held \w+day \d+ \w+, \d\d:\d\d, held for 10 minutes\.$/,
+    );
   });
 });
 
@@ -150,11 +153,13 @@ describe("announcer — tool disappearance (#262)", () => {
     });
   });
 
-  it("stays silent for tools that merely became available", () => {
+  it("says nothing about tools that merely became available", () => {
     heard = [];
     store().selectProvider("p01");
-    // get_availability arrived; nothing left, so there is nothing to say.
-    expect(texts()).toEqual([]);
+    // get_availability arrived. Announcing arrivals would narrate the whole
+    // registry at every step; only departures need explaining (#262).
+    expect(texts().filter((t) => /no longer available/.test(t))).toEqual([]);
+    expect(texts()).toEqual(["Now pick a time from the availability grid."]);
   });
 });
 

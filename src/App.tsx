@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AuditTrail } from "./components/AuditTrail";
 import { BookingSummary } from "./components/BookingSummary";
 import { Calendar } from "./components/Calendar";
 import { CommandPalette } from "./components/CommandPalette";
@@ -8,6 +9,8 @@ import { AnnouncementLog, LiveRegion } from "./components/LiveRegion";
 import { LockstepPanel } from "./components/LockstepPanel";
 import { ProviderList } from "./components/ProviderList";
 import { SearchForm } from "./components/SearchForm";
+import { focusStage } from "./lib/stageFocus";
+import { performUndo } from "./lib/undo";
 import { useBookingStore } from "./store";
 
 /**
@@ -54,6 +57,31 @@ function Section({
 export default function App() {
   const detected = useWebMcpDetected();
   const liveTools = useBookingStore((s) => s.liveTools);
+  const stage = useBookingStore((s) => s.stage);
+  const previousStage = useRef(stage);
+
+  // Focus follows the work, but only on a genuine stage change — never on an
+  // ordinary re-render, which would yank focus away mid-typing.
+  useEffect(() => {
+    if (previousStage.current === stage) return;
+    previousStage.current = stage;
+    focusStage(stage);
+  }, [stage]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        // Never hijack undo inside a text field — the browser's own undo is
+        // what a user typing into an input expects.
+        const target = event.target as HTMLElement | null;
+        if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+        event.preventDefault();
+        performUndo();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <div className="min-h-dvh bg-white text-slate-900">
@@ -129,9 +157,13 @@ export default function App() {
         </Section>
 
         <Section id="activity" title="What just happened">
-          {/* The audit trail, visible. Screen-reader users hear these lines;
-              everyone else can see that the agent changed something too. */}
+          {/* Announcements as a running log. Screen-reader users hear these
+              lines; everyone else can see that the agent changed something. */}
           <AnnouncementLog />
+        </Section>
+
+        <Section id="audit" title="Activity trail">
+          <AuditTrail />
         </Section>
 
         <Section id="tools" title="Live tools">

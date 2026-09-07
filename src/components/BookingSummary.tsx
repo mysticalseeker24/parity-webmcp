@@ -109,6 +109,7 @@ export function BookingSummary() {
         <div>
           <button
             type="button"
+            id="confirm-booking"
             onClick={() => void confirm()}
             disabled={busy}
             className="rounded bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
