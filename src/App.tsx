@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { BookingSummary } from "./components/BookingSummary";
 import { Calendar } from "./components/Calendar";
+import { CommandPalette } from "./components/CommandPalette";
 import { IntakeForm } from "./components/IntakeForm";
-import { LiveRegion } from "./components/LiveRegion";
+import { AnnouncementLog, LiveRegion } from "./components/LiveRegion";
+import { LockstepPanel } from "./components/LockstepPanel";
 import { ProviderList } from "./components/ProviderList";
 import { SearchForm } from "./components/SearchForm";
 import { useBookingStore } from "./store";
@@ -71,6 +73,8 @@ export default function App() {
             <p className="text-slate-700">Specialist care booking</p>
           </div>
 
+          <div className="flex items-center gap-3">
+            <CommandPalette />
           {/* Badge states the mode in words and with a symbol — never colour
               alone (CONVENTIONS.md §6). */}
           <p
@@ -86,6 +90,7 @@ export default function App() {
             <span aria-hidden="true">{detected === null ? "…" : detected ? "✓" : "!"} </span>
             WebMCP: {detected === null ? "checking" : detected ? "detected" : "not detected"}
           </p>
+          </div>
         </div>
       </header>
 
@@ -117,6 +122,12 @@ export default function App() {
           <IntakeForm />
         </Section>
 
+        <Section id="activity" title="What just happened">
+          {/* The audit trail, visible. Screen-reader users hear these lines;
+              everyone else can see that the agent changed something too. */}
+          <AnnouncementLog />
+        </Section>
+
         <Section id="tools" title="Live tools">
           <p className="text-slate-700">
             {liveTools.length > 0 ? (
@@ -130,10 +141,11 @@ export default function App() {
               "No tools registered."
             )}
           </p>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 mb-3 text-sm text-slate-600">
             The set changes with the stage: an action that is not legal right now is not registered,
             so it cannot be called by anyone.
           </p>
+          <LockstepPanel />
         </Section>
       </main>
     </div>
