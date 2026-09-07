@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./docs/brand/parity-wordmark.png" alt="Parity — one registry, two callers" width="640">
+</p>
+
 # Parity
 
 **Booking specialist care, where every capability is reachable three ways — the visual interface, a keyboard and voice command surface, or your AI agent — all driving the same WebMCP tool registry.**
@@ -147,11 +151,70 @@ Then either:
 
 Without WebMCP, the app still works: the command palette falls back to the internal registry, and the visual UI is unaffected. Progressive enhancement throughout.
 
-### Verifying
+---
+
+## Verify it yourself
+
+Five minutes, and you can check every claim on this page rather than taking it on trust.
+
+### 1. Open it where an agent can see it
+
+| Surface | Setup |
+|---|---|
+| **ChatGPT desktop built-in browser** | Update the app. Set the model to **GPT-5.6 Sol** or **Terra** — **Luna has WebMCP disabled**, and it is the usual reason tools never appear. |
+| **Chrome 149+** | `chrome://flags/#enable-webmcp-testing` → Enabled → relaunch. |
+
+The header badge should read **✓ WebMCP: detected**. If it says *not detected*, nothing below will
+work — check the model first.
+
+### 2. See the tools the page registered
+
+Click **Site tools** in the address bar. In the starting state you should see exactly four:
+`get_booking_state`, `list_accommodations`, `find_providers`, `select_provider`.
+
+That is the whole live surface. Nineteen tools are defined; never more than seven are registered,
+because an action that is not legal right now does not exist.
+
+### 3. Drive the same tools yourself, with no agent and no mouse
+
+Press **Ctrl+K** (or **⌘K**). The palette that opens is **not a menu of app features** — it calls
+`document.modelContext.getTools()`, the same discovery API the agent uses, and executes through
+`document.modelContext.executeTool()`. Every form in it is generated from the tool's own JSON Schema,
+and each field's label *is* its schema description.
+
+Complete an entire booking from the palette using only the keyboard:
+`find_providers` → `select_provider` → `get_availability` → `hold_slot` → `set_intake`.
+
+### 4. Watch both surfaces move together
+
+Scroll to **Live tools** and expand **"One registry, two callers — live view"**. It shows the
+browser's `getTools()` list beside the palette's, with the last diff and *why* each tool left.
+
+Now change the stage — hold a slot, or complete intake — and watch both lists change at once. There
+is one diff, and both callers are reading it.
+
+### 5. Watch the gate refuse to be talked around
+
+Ask the agent to confirm a booking. It cannot. `confirm_booking` returns `pending_authorization` and
+an **Approval required** card appears, showing every argument in full. Approve is inert for 1.5 s.
+
+The **Activity trail** at the bottom records who did what — and for approvals, how many milliseconds
+you took. An approval under 800 ms is flagged **possibly automated**. That flag exists because of
+[#288](https://github.com/webmachinelearning/webmcp/issues/288): a page *cannot* tell an automated
+click from yours, so Parity records the evidence instead of claiming a guarantee it does not have.
+
+### 6. Turn WebMCP off and confirm the site still works
+
+Open it in Firefox, Safari, or Chrome without the flag. The badge says *not detected*; the palette
+falls back to the local registry; every visual control still works. Progressive enhancement, not a
+hard dependency.
+
+### Running the automated checks
 
 ```bash
-npm run verify          # typecheck + unit tests + build + real-browser checks
+npm run verify          # typecheck + 237 unit tests + build + 22 real-browser checks
 npm run verify:browser  # just the browser pass (needs a build and Chrome 149+)
+npm test                # unit tests only — no browser needed, safe in CI
 ```
 
 `verify:browser` serves `dist/` and drives headless Chrome with `--enable-blink-features=WebMCP` (the command-line equivalent of the flag) over the DevTools Protocol, asserting that tools register, that `getTools()` returns them, that `executeTool()` round-trips, and that a state transition re-registers the live set. Unit tests run against a mock and can only prove internal consistency; this pass runs against Chrome's real implementation, verified on Chrome 152. Neither substitutes for opening the deployed URL in ChatGPT's built-in browser, which supports a documented subset — see [`.agent/PHASE1_FINDINGS.md`](./.agent/PHASE1_FINDINGS.md) for what the browser actually does, including four behaviours that contradict `webmcp-types`.
