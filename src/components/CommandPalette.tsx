@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { executeAsHuman, getRegistry } from "../lib/registry";
-import { isRefusal, type ToolResult } from "../lib/result";
+import { type ToolResult } from "../lib/result";
+import { ResultView } from "./ResultView";
 import { onPaletteRequest, type PaletteRequest } from "../lib/paletteBridge";
 import { fieldsFromSchema, valuesToArgs, type FormField } from "../lib/schemaForm";
 import { readInputSchema, type JsonSchema } from "../lib/webmcpInterop";
@@ -513,25 +514,9 @@ export function CommandPalette() {
               <div
                 role="status"
                 aria-live="polite"
-                className="max-h-40 overflow-y-auto border-[1.5px] border-ink bg-stock-deep p-3 text-sm"
+                className="max-h-56 overflow-y-auto border-[1.5px] border-ink bg-stock-deep p-3 text-sm"
               >
-                {isRefusal(result) ? (
-                  <>
-                    <p className="font-semibold text-spot-deep">
-                      <span aria-hidden="true">✕ </span>
-                      {result.kind.replace(/_/g, " ")}
-                    </p>
-                    <p className="text-ink">{result.reason}</p>
-                    {result.next && (
-                      <p className="mt-1 text-ink">Next: run “{result.next}”.</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-ink">
-                    <span aria-hidden="true">✓ </span>
-                    {result.human_summary}
-                  </p>
-                )}
+                <ResultView result={result} />
               </div>
             )}
             </div>

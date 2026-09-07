@@ -5,7 +5,7 @@
 **Repo:** <https://github.com/mysticalseeker24/parity-webmcp>
 **Thumbnail:** `docs/brand/devpost-thumbnail.png`
 **Gallery images:** `docs/screenshots/` — suggested order: `hero.png`,
-`lockstep-panel.png`, `command-palette.png`, `grant-card.png`,
+`lockstep-panel.png`, `command-palette.png`, `prompt-injection.png`, `grant-card.png`,
 `audit-trail.png`, `calendar.png`
 
 ---

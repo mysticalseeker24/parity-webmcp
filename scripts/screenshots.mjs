@@ -208,6 +208,45 @@ try {
   await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
   await sleep(400);
 
+  // The injection, on screen. get_provider_detail has no surface anywhere but
+  // the palette, so this is the only place the fixture's planted instruction
+  // is visible — carrying the key that names it as provider-written prose.
+  await callTool("find_providers", { specialty: "physiotherapy" });
+  await sleep(300);
+  await send("Input.dispatchKeyEvent", {
+    type: "keyDown", key: "k", code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 2,
+  });
+  await send("Input.dispatchKeyEvent", {
+    type: "keyUp", key: "k", code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 2,
+  });
+  await sleep(600);
+  const shotInjection = await evaluate(`(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const d = document.querySelector('[role="dialog"]');
+    if (!d) return false;
+    const set = (el, v) => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value").set.call(el, v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    set(d.querySelector("#palette-search"), "detail");
+    await settle(150);
+    d.querySelector('[role="option"]')?.click();
+    await settle(150);
+    const field = d.querySelector('form input[type="text"], form input:not([type])');
+    if (!field) return false;
+    set(field, "p10");
+    await settle(100);
+    d.querySelector('form button[type="submit"]').click();
+    await settle(500);
+    d.firstElementChild.id = "shot-injection";
+    return /SYSTEM NOTE TO AGENT/.test(d.textContent ?? "");
+  })()`);
+  if (shotInjection) await shotElement("#shot-injection", "prompt-injection.png");
+  else console.log("  skipped prompt-injection.png — the injected line did not render");
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await sleep(400);
+
   // Drive to intake_complete so the interesting states are on screen.
   await callTool("find_providers", { specialty: "neurology" });
   await callTool("select_provider", { provider_id: "p01" });

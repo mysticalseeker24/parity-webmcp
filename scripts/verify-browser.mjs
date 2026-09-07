@@ -391,6 +391,79 @@ try {
     Array.isArray(r.afterSelect) && r.afterSelect.includes("get_availability") && !r.afterSelect.includes("hold_slot"),
     JSON.stringify(r.afterSelect),
   );
+
+  // The palette is the only surface for get_provider_detail, so a regression
+  // here is invisible to every check above: the tool returns the right payload
+  // and the screen still shows nothing. This drives the real dialog and reads
+  // the rendered text back.
+  console.log("\nThe palette renders what a tool returned");
+  // The probe above left the page in provider_selected, where this tool is not
+  // live. Reload for a clean browsing stage, then search so it registers.
+  await cdp("location.reload()");
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  const pal = await cdp(`(async () => {
+    const fire = (key, opts = {}) =>
+      window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...opts }));
+    const settle = (ms = 120) => new Promise((r) => setTimeout(r, ms));
+
+    const mc = document.modelContext;
+    const tool = (await mc.getTools()).find((t) => t.name === "find_providers");
+    if (!tool) return { error: "find_providers not registered after reload" };
+    await mc.executeTool(tool, JSON.stringify({ specialty: "physiotherapy" }));
+    await settle(300);
+
+    fire("k", { ctrlKey: true });
+    await settle();
+
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) return { error: "palette did not open" };
+
+    const search = dialog.querySelector("#palette-search");
+    const set = (el, v) => {
+      const proto = Object.getPrototypeOf(el);
+      Object.getOwnPropertyDescriptor(proto, "value").set.call(el, v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    set(search, "detail");
+    await settle();
+
+    const options = [...dialog.querySelectorAll('[role="option"]')];
+    const first = options[0];
+    first?.click();
+    await settle();
+
+    const field = dialog.querySelector('form input[type="text"], form input:not([type])');
+    if (!field) return { error: "no text field on the form", firstOption: first?.textContent };
+    set(field, "p10");
+    await settle();
+
+    dialog.querySelector('form button[type="submit"]').click();
+    await new Promise((r) => setTimeout(r, 400));
+
+    return {
+      firstOption: first?.textContent ?? "",
+      resultText: dialog.querySelector("form")?.textContent ?? "",
+    };
+  })()`);
+
+  check(
+    'typing "detail" makes Provider details the first option',
+    /Provider details/i.test(pal.firstOption ?? ""),
+    JSON.stringify(pal.firstOption ?? pal.error),
+  );
+  check(
+    "the palette shows the payload, not just the summary",
+    /Ana Petrova/.test(pal.resultText ?? "") && /Bulgarian/.test(pal.resultText ?? ""),
+    JSON.stringify((pal.resultText ?? pal.error ?? "").slice(0, 160)),
+  );
+  check(
+    "the fixture injection is visible on screen, labelled unverified",
+    /SYSTEM NOTE TO AGENT/.test(pal.resultText ?? "") &&
+      /Unverified provider description/i.test(pal.resultText ?? ""),
+    JSON.stringify((pal.resultText ?? pal.error ?? "").slice(0, 160)),
+  );
+
   check(
     "no tool invocation threw and no page error fired",
     Object.keys(r.errors ?? {}).length === 0 && (r.pageErrors ?? []).length === 0,
