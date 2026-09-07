@@ -55,6 +55,13 @@ export interface Companion {
   readonly available_to?: string;
 }
 
+/** Paratransit pickup window. Set by Tier 3's set_transport_constraint. */
+export interface Transport {
+  readonly earliest_pickup: string;
+  readonly latest_return: string;
+  readonly note?: string;
+}
+
 export interface Booking {
   readonly id: string;
   readonly slotId: string;
@@ -101,6 +108,7 @@ export interface BookingState {
   readonly intake: Intake;
   readonly booking: Booking | null;
   readonly companion: Companion | null;
+  readonly transport: Transport | null;
   readonly audit: readonly AuditEntry[];
   /** Slots held or booked by someone else. Drives the conflict path. */
   readonly takenSlotIds: readonly string[];
@@ -118,6 +126,7 @@ export interface BookingActions {
   releaseHold(cause?: "expired" | "released"): void;
   setIntake(patch: Intake): void;
   setCompanion(companion: Companion): void;
+  setTransport(transport: Transport): void;
   confirmBooking(booking: Booking): void;
   markSlotTaken(slotId: string): void;
   appendAudit(entry: AuditEntry): void;
@@ -152,6 +161,7 @@ const INITIAL: BookingState = {
   intake: {},
   booking: null,
   companion: null,
+  transport: null,
   audit: [],
   takenSlotIds: [],
   liveTools: [],
@@ -206,6 +216,8 @@ export const bookingStore = createStore<BookingStore>()((set, get) => ({
     }),
 
   setCompanion: (companion) => set({ companion }),
+
+  setTransport: (transport) => set({ transport }),
 
   confirmBooking: (booking) => set({ booking, heldSlot: null, stage: "booked" }),
 

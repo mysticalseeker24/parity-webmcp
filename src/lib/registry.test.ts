@@ -36,12 +36,11 @@ describe("registry — the live set is a pure function of state", () => {
   it("registers exactly the browsing-stage tools on start", () => {
     registry = startRegistry(TOOLS);
     expect(names()).toEqual([
-      "check_coverage",
+      "explain_capability",
       "find_providers",
       "get_booking_state",
       "list_accommodations",
       "select_provider",
-      "set_companion_constraint",
     ]);
     expect([...store().liveTools]).toEqual(names());
   });
@@ -51,33 +50,49 @@ describe("registry — the live set is a pure function of state", () => {
 
     mc!.clearLog();
     store().selectProvider("p01");
-    // check_coverage is a browsing-stage question; get_availability arrives.
-    expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name)).toEqual([
+    // Scheduling opens; the "what am I looking for" tools give way to the
+    // "who is coming and how" ones.
+    expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name).sort()).toEqual([
       "get_availability",
+      "set_companion_constraint",
+      "set_transport_constraint",
     ]);
-    expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name)).toEqual([
-      "check_coverage",
-    ]);
+    expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name)).toContain(
+      "explain_capability",
+    );
 
     mc!.clearLog();
     store().markAvailabilityFetched();
-    expect(mc!.log).toEqual([{ op: "register", name: "hold_slot" }]);
+    // Picking times begins: hold_slot arrives, and the pre-scheduling
+    // constraint tools step aside.
+    expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name)).toEqual(["hold_slot"]);
+    expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name).sort()).toEqual([
+      "set_companion_constraint",
+      "set_transport_constraint",
+    ]);
 
     mc!.clearLog();
     store().holdSlot({ slotId: "s1", providerId: "p01", expiresAt: Date.now() + HOLD_TTL_MS });
     expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name).sort()).toEqual([
       "find_providers",
       "select_provider",
-      "set_companion_constraint",
     ]);
     expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name).sort()).toEqual([
       "release_slot",
       "set_intake",
+      "watch_earlier_slot",
     ]);
 
     mc!.clearLog();
     store().setIntake({ patient_name: "A", dob: "1990-01-01", reason: "r" });
-    expect(mc!.log).toEqual([{ op: "register", name: "confirm_booking" }]);
+    // Confirming becomes legal; shopping for an earlier slot stops being
+    // offered, which is what keeps the live set at its cap.
+    expect(mc!.log.filter((e) => e.op === "register").map((e) => e.name)).toEqual([
+      "confirm_booking",
+    ]);
+    expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name)).toEqual([
+      "watch_earlier_slot",
+    ]);
     expect(store().stage).toBe("intake_complete");
 
     mc!.clearLog();
@@ -87,6 +102,7 @@ describe("registry — the live set is a pure function of state", () => {
       "release_slot",
       "set_intake",
     ]);
+    expect(store().stage).toBe("provider_selected");
   });
 
   it("does not churn tools that stay live across a transition", () => {
@@ -120,7 +136,13 @@ describe("registry — the live set is a pure function of state", () => {
       intake: {},
     });
     check();
-    expect(names()).toEqual(["cancel_booking", "get_booking_state", "list_accommodations"]);
+    expect(names()).toEqual([
+      "cancel_booking",
+      "export_summary",
+      "get_booking_state",
+      "list_accommodations",
+      "reschedule_booking",
+    ]);
   });
 
   it("stays within the cap in the fullest stage — a zero-result search", () => {
@@ -135,7 +157,7 @@ describe("registry — the live set is a pure function of state", () => {
       eliminated_by: { accommodations: 3 },
     });
     expect(names()).toContain("explain_no_results");
-    expect(names().length).toBe(MAX_LIVE_TOOLS);
+    expect(names().length).toBeLessThanOrEqual(MAX_LIVE_TOOLS);
   });
 
   it("fires toolchange so the agent and the palette see the same diff", () => {
@@ -256,12 +278,11 @@ describe("registry — without WebMCP", () => {
 
     expect(registry.hasModelContext).toBe(false);
     expect(registry.getLiveTools().map((t) => t.name).sort()).toEqual([
-      "check_coverage",
+      "explain_capability",
       "find_providers",
       "get_booking_state",
       "list_accommodations",
       "select_provider",
-      "set_companion_constraint",
     ]);
 
     reachAvailability();

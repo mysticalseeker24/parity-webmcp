@@ -25,14 +25,15 @@ export const checkCoverage = defineTool({
     specialty: SPECIALTY.describe("Specialty the appointment is for"),
   }),
   voiceAliases: ["am I covered", "check my insurance"],
-  available: (state) => state.stage === "browsing",
+  available: (state) => state.stage === "browsing" && state.lastSearch !== null,
   unavailableReason: (state) => {
-    const code = state.stage === "booked" ? "already_booked" : "picking_times";
-    return {
-      reason_code: code,
-      reason: REASONS[code],
-      unlock_by: code === "picking_times" ? "release_slot" : "",
-    };
+    if (state.stage === "booked") {
+      return { reason_code: "already_booked", reason: REASONS.already_booked, unlock_by: "" };
+    }
+    if (state.stage !== "browsing") {
+      return { reason_code: "picking_times", reason: REASONS.picking_times, unlock_by: "release_slot" };
+    }
+    return { reason_code: "no_search", reason: REASONS.no_search, unlock_by: "find_providers" };
   },
   execute: (input) => {
     // Belt and braces: the schema constrains this, but schema constraints are

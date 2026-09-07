@@ -48,7 +48,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("Tier 1 inventory", () => {
-  it("is Tier 1 then Tier 2, in workflow order", () => {
+  it("is Tier 1, Tier 2, then Tier 3, in workflow order", () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       // Tier 1
       "get_booking_state",
@@ -65,6 +65,13 @@ describe("Tier 1 inventory", () => {
       "set_companion_constraint",
       "release_slot",
       "cancel_booking",
+      // Tier 3
+      "get_provider_detail",
+      "explain_capability",
+      "export_summary",
+      "set_transport_constraint",
+      "watch_earlier_slot",
+      "reschedule_booking",
     ]);
   });
 
@@ -76,10 +83,19 @@ describe("Tier 1 inventory", () => {
       "get_availability",
       "explain_no_results",
       "check_coverage",
+      "get_provider_detail",
+      "explain_capability",
+      "export_summary",
+      "watch_earlier_slot",
     ]);
     expect(TOOLS.filter((t) => t.spec.requiresGrant).map((t) => t.name)).toEqual([
       "confirm_booking",
       "cancel_booking",
+      "reschedule_booking",
+    ]);
+    // Exactly one tool returns provider prose, and it is annotated for it.
+    expect(TOOLS.filter((t) => t.spec.untrustedOutput).map((t) => t.name)).toEqual([
+      "get_provider_detail",
     ]);
   });
 });
@@ -89,20 +105,15 @@ describe("get_booking_state (#262, #255)", () => {
     const data = expectOk(await getBookingState.run({}));
     expect(data["stage"]).toBe("browsing");
     expect(data["live"]).toEqual({
-      orient: ["get_booking_state", "list_accommodations"],
-      search: ["find_providers", "select_provider", "check_coverage", "set_companion_constraint"],
+      orient: ["get_booking_state", "list_accommodations", "explain_capability"],
+      search: ["find_providers", "select_provider"],
     });
 
     const unavailable = data["unavailable"] as { tool: string; reason_code: string; unlock_by: string }[];
-    expect(unavailable.map((u) => u.tool)).toEqual([
-      "get_availability",
-      "hold_slot",
-      "set_intake",
-      "confirm_booking",
-      "explain_no_results",
-      "release_slot",
-      "cancel_booking",
-    ]);
+    // Every tool not live is accounted for, with a code and an unlock step.
+    expect(unavailable).toHaveLength(TOOLS.length - 5);
+    expect(unavailable.map((u) => u.tool)).toContain("confirm_booking");
+    expect(unavailable.map((u) => u.tool)).toContain("reschedule_booking");
     // Every entry says why and how to unlock — the context #262 says
     // unregistration destroys. Codes, not prose, so the payload still fits the
     // 1.5K budget as the tool set grows.

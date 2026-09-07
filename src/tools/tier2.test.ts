@@ -393,7 +393,7 @@ describe("Tier 2 keeps the whole-set invariants", () => {
     await cancelOrConfirm();
     note("booked");
 
-    expect(seen["booked"]).toBe(3);
+    expect(seen["booked"]).toBe(5);
   });
 
   it("keeps get_booking_state under budget with all 13 tools accounted for", async () => {

@@ -438,7 +438,13 @@ describe("two-phase confirm_booking", () => {
     const names = (await document.modelContext!.getTools()).map((t) => t.name).sort();
     // cancel_booking takes its place: reversing a booking is its own gated
     // action, not an undo of the one that created it.
-    expect(names).toEqual(["cancel_booking", "get_booking_state", "list_accommodations"]);
+    expect(names).toEqual([
+      "cancel_booking",
+      "export_summary",
+      "get_booking_state",
+      "list_accommodations",
+      "reschedule_booking",
+    ]);
   });
 });
 

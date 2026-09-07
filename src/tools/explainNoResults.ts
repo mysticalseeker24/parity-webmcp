@@ -32,8 +32,17 @@ export const explainNoResults = defineTool({
     "Explain why the last provider search returned nothing: which constraint eliminated how many providers, and which single change would open up the most options. Available only after a search that matched nobody.",
   schema: z.object({}),
   voiceAliases: ["why did nothing match", "why no results"],
-  available: (state) => state.lastSearch !== null && state.lastSearch.total_matches === 0,
+  // Browsing only. Without the stage check a zero-result search earlier in the
+  // session would leave this live all the way through to `booked`, explaining
+  // a search nobody is looking at any more.
+  available: (state) =>
+    state.stage === "browsing" &&
+    state.lastSearch !== null &&
+    state.lastSearch.total_matches === 0,
   unavailableReason: (state) => {
+    if (state.stage !== "browsing") {
+      return { reason_code: "picking_times", reason: REASONS.picking_times, unlock_by: "release_slot" };
+    }
     const code = state.lastSearch === null ? "no_search" : "search_had_results";
     return { reason_code: code, reason: REASONS[code], unlock_by: "find_providers" };
   },
