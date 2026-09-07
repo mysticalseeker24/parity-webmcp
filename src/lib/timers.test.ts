@@ -135,6 +135,7 @@ describe("expiry, seen from both surfaces", () => {
     expect(names()).not.toContain("confirm_booking");
     expect(mc!.log.filter((e) => e.op === "unregister").map((e) => e.name).sort()).toEqual([
       "confirm_booking",
+      "release_slot",
       "set_intake",
     ]);
   });
@@ -153,8 +154,12 @@ describe("expiry, seen from both surfaces", () => {
       unlock_by: "hold_slot",
     });
     expect(confirm?.reason).toBe("The hold on the slot expired.");
-    // find_providers and select_provider come back once the hold is gone.
-    expect([...(change?.added ?? [])].sort()).toEqual(["find_providers", "select_provider"]);
+    // The browsing-stage tools come back once the hold is gone.
+    expect([...(change?.added ?? [])].sort()).toEqual([
+      "find_providers",
+      "select_provider",
+      "set_companion_constraint",
+    ]);
   });
 
   it("distinguishes an expired hold from one that never existed", async () => {

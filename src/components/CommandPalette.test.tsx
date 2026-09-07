@@ -73,7 +73,7 @@ describe("palette — accessible combobox", () => {
 
   it("announces the result count and updates it as you type", async () => {
     const combobox = await openPalette();
-    expect(screen.getByRole("status").textContent).toBe("4 commands available");
+    expect(screen.getByRole("status").textContent).toBe("6 commands available");
 
     // "provider" also matches list_accommodations, whose description mentions
     // find_providers — the filter searches descriptions, not just labels.
@@ -129,7 +129,7 @@ describe("palette — reads the browser as its source of truth", () => {
 
     await openPalette();
     expect(screen.getByText(/Reading the local registry/)).toBeDefined();
-    expect(within(screen.getByRole("listbox")).getAllByRole("option")).toHaveLength(4);
+    expect(within(screen.getByRole("listbox")).getAllByRole("option")).toHaveLength(6);
   });
 
   it("re-reads on toolchange, so it moves in lockstep with the agent", async () => {

@@ -48,14 +48,22 @@ export interface Registry {
 // would understate what the agent did in the audit trail.
 // ---------------------------------------------------------------------------
 
-let nextActor: Actor | null = null;
+// The mark is keyed by tool name. A bare global marker looks simpler but is
+// wrong: `executeAsHuman` sets it and then awaits `getTools()`, and any tool
+// call that lands during that await consumes the mark meant for another call.
+// That was observed live — an agent's `select_provider` was recorded as "You"
+// because the calendar's own `get_availability` had just set the mark. The
+// failure direction is the bad one: it understates what the agent did.
+let nextActor: { actor: Actor; tool: string } | null = null;
 
-export function setNextActor(actor: Actor): void {
-  nextActor = actor;
+export function setNextActor(actor: Actor, tool?: string): void {
+  nextActor = { actor, tool: tool ?? "*" };
 }
 
-function takeNextActor(): Actor {
-  const actor = nextActor ?? "agent";
+function takeNextActor(tool: string): Actor {
+  if (!nextActor) return "agent";
+  if (nextActor.tool !== "*" && nextActor.tool !== tool) return "agent";
+  const { actor } = nextActor;
   nextActor = null;
   return actor;
 }
@@ -85,7 +93,7 @@ export async function executeAsHuman(name: string, input: unknown): Promise<Tool
   const registry = active;
   if (!registry) throw new Error("[registry] executeAsHuman before startRegistry");
 
-  setNextActor("human");
+  setNextActor("human", name);
 
   const mc = document.modelContext;
   if (registry.hasModelContext && typeof mc?.executeTool === "function") {
@@ -155,7 +163,7 @@ export function startRegistry(
     registered.set(tool.name, { tool, controller });
     if (!modelContext) return;
     const mcTool = tool.toModelContextTool((called, input, result) => {
-      recordAudit(called, takeNextActor(), input, result);
+      recordAudit(called, takeNextActor(called.name), input, result);
     });
     // The browser calls the tool's closure directly, so the undo capture has to
     // wrap that closure rather than sit in registry.execute — otherwise an
@@ -233,7 +241,7 @@ export function startRegistry(
     getTool: (name) => tools.find((t) => t.name === name),
     execute: async (name, input) => {
       const entry = registered.get(name);
-      const actor = takeNextActor();
+      const actor = takeNextActor(name);
       if (!entry) {
         const tool = tools.find((t) => t.name === name);
         const reason = tool?.unavailableReason(store.getState());

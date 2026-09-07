@@ -48,8 +48,9 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("Tier 1 inventory", () => {
-  it("is the 8 tools from PROJECT_SPEC §5, in workflow order", () => {
+  it("is Tier 1 then Tier 2, in workflow order", () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
+      // Tier 1
       "get_booking_state",
       "list_accommodations",
       "find_providers",
@@ -58,18 +59,27 @@ describe("Tier 1 inventory", () => {
       "hold_slot",
       "set_intake",
       "confirm_booking",
+      // Tier 2
+      "explain_no_results",
+      "check_coverage",
+      "set_companion_constraint",
+      "release_slot",
+      "cancel_booking",
     ]);
   });
 
-  it("marks exactly the read-only tools readOnly, and gates only confirm_booking", () => {
+  it("marks exactly the read-only tools readOnly, and gates only the two committing tools", () => {
     expect(TOOLS.filter((t) => t.spec.readOnly).map((t) => t.name)).toEqual([
       "get_booking_state",
       "list_accommodations",
       "find_providers",
       "get_availability",
+      "explain_no_results",
+      "check_coverage",
     ]);
     expect(TOOLS.filter((t) => t.spec.requiresGrant).map((t) => t.name)).toEqual([
       "confirm_booking",
+      "cancel_booking",
     ]);
   });
 });
@@ -80,7 +90,7 @@ describe("get_booking_state (#262, #255)", () => {
     expect(data["stage"]).toBe("browsing");
     expect(data["live"]).toEqual({
       orient: ["get_booking_state", "list_accommodations"],
-      search: ["find_providers", "select_provider"],
+      search: ["find_providers", "select_provider", "check_coverage", "set_companion_constraint"],
     });
 
     const unavailable = data["unavailable"] as { tool: string; reason_code: string; unlock_by: string }[];
@@ -89,12 +99,17 @@ describe("get_booking_state (#262, #255)", () => {
       "hold_slot",
       "set_intake",
       "confirm_booking",
+      "explain_no_results",
+      "release_slot",
+      "cancel_booking",
     ]);
     // Every entry says why and how to unlock — the context #262 says
-    // unregistration destroys.
+    // unregistration destroys. Codes, not prose, so the payload still fits the
+    // 1.5K budget as the tool set grows.
     for (const entry of unavailable) {
       expect(entry.reason_code).toBeTruthy();
       expect(entry.unlock_by).toBeTruthy();
+      expect(entry).not.toHaveProperty("reason");
     }
     expect(unavailable.find((u) => u.tool === "confirm_booking")?.reason_code).toBe("no_hold");
   });
