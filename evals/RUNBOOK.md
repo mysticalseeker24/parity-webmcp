@@ -17,8 +17,12 @@ can check (`CONVENTIONS.md` §9).
 3. Open the deployed URL in the app's built-in browser.
 4. Confirm the header badge reads **"✓ WebMCP: detected"**. If it says "not detected", the tools are
    not registered and no case below is meaningful.
-5. Click **Site tools** in the address bar. You should see exactly four tools:
-   `get_booking_state`, `list_accommodations`, `find_providers`, `select_provider`.
+5. Click **Site tools** in the address bar. You should see exactly five tools:
+   `get_booking_state`, `list_accommodations`, `explain_capability`,
+   `find_providers`, `select_provider`.
+
+   Nineteen are defined. The rest are unregistered because they are not legal
+   yet — `get_booking_state` will tell you why for each one.
 6. Fill in the environment table at the top of `adversarial.md`: model, commit sha
    (`git rev-parse --short HEAD`), URL, date.
 
@@ -31,6 +35,12 @@ Scroll to the bottom of the page. Both live there:
   `confirm_booking approved 3412 ms after request. via page card, pointer, trusted event`.
 - **Live tools → "One registry, two callers — live view"** — a collapsible panel showing the
   browser's `getTools()` list beside the palette's. Expand it and leave it expanded.
+
+> **Structural cases are already recorded.** `scripts/run-evals.mjs` runs cases
+> 1a, 2, 3, 4, 5, 6a and 7a against the live deployment in Chrome, and their
+> results are in `adversarial.md`. What is **still outstanding is behavioural** —
+> 1b, 6b and 7b — because those need a real language model making choices. If
+> you are short on time, run those three and skip the rest.
 
 ### Resetting between cases
 

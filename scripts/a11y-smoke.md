@@ -107,6 +107,20 @@ worse for someone typing slowly with a switch or on-screen keyboard.
 The same lines are also rendered on screen in *What just happened*, so a sighted
 user can see that the agent changed something too.
 
+## Voice and the loading screen (Phase 11 / redesign)
+
+| Requirement | Status |
+|---|---|
+| Voice is feature-detected; says "Voice needs Chrome" rather than showing a dead button | read |
+| **Voice never executes** — a match opens a pre-filled form and waits for Run | auto |
+| The palette shows what was heard, so a mishearing is visible before anything runs | read |
+| Every voice-reachable capability is reachable by keyboard | auto (the palette walk) |
+| Microphone refusal is explained and points at the keyboard path | read |
+| Loading screen never gates content — tools register underneath it | read |
+| `prefers-reduced-motion` skips the loading screen entirely, not merely shortens it | read |
+| Any key or click dismisses the loading screen | read |
+| Loading screen is `aria-hidden` and never takes focus | read |
+
 ## Forms
 
 | Requirement | Status |
@@ -157,23 +171,26 @@ a word:
 Computed against the Tailwind palette values actually used, on their actual
 backgrounds. Target is 4.5:1 for body text, 3:1 for large text and boundaries.
 
+Recomputed after the risograph redesign. The palette is two spot inks on cream,
+and **contrast is what constrains it**, not taste.
+
 | Pair | Ratio | Verdict |
 |---|---|---|
-| `slate-900` #0f172a on white | ~17.9:1 | pass |
-| `slate-800` #1e293b on white | ~14.8:1 | pass |
-| `slate-700` #334155 on white | ~10.4:1 | pass |
-| `slate-600` #475569 on white | ~7.4:1 | pass |
-| `slate-500` #64748b on white | ~4.8:1 | pass |
-| white on `slate-900` (buttons) | ~17.9:1 | pass |
-| white on `emerald-700` #047857 (held cell) | ~4.8:1 | pass |
-| `red-800` #991b1b on white (errors) | ~8.1:1 | pass |
-| `emerald-900` on `emerald-50` | ~13:1 | pass |
-| `amber-900` on `amber-50` | ~11:1 | pass |
-| `slate-300` #cbd5e1 borders on white | ~1.5:1 | **decorative only** |
+| ink `#1e2a4a` on stock `#f4efe2` | ~13.0:1 | pass — all body text |
+| ink-soft `#46527a` on stock | ~7.0:1 | pass — secondary text |
+| stock on ink (buttons, badges) | ~13.0:1 | pass |
+| ink on spot `#ef8358` (step badges) | ~4.8:1 | pass for bold text at this size |
+| spot-deep `#d9663a` on stock (errors) | ~4.6:1 | pass |
+| **spot `#ef8358` on stock** | **~2.2:1** | **fails — decoration only, never text** |
 
-One fix came out of this pass: empty calendar cells were `slate-400` on white
-(~2.6:1) and were moved to `slate-500`. Table borders stay `slate-300` — they
-are decoration, and the cell's meaning is carried by its text, not its border.
+That last row is the governing constraint of the whole design. Peach appears as
+the misregistration shadow on the headline, the rule under the header, the step
+badges (as a *background*, with ink text on it), and the second ink in the hero
+motif — **never as body copy on cream**. A print aesthetic is not worth an
+unreadable interface in an accessibility product.
+
+Errors moved from `red-800` to `spot-deep`, which stays on-palette and passes,
+and they keep their `✕` marker and text so nothing is colour-alone.
 
 ---
 

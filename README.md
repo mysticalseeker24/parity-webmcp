@@ -1,12 +1,44 @@
 <p align="center">
-  <img src="./docs/brand/parity-wordmark.png" alt="Parity — one registry, two callers" width="640">
+  <img src="./docs/brand/parity-wordmark.png" alt="Parity — one registry, two callers" width="620">
 </p>
 
-# Parity
+<p align="center">
+  <strong>Booking specialist care, where the visual interface, a keyboard command palette, voice, and your AI agent are all callers of the same WebMCP tool registry.</strong>
+</p>
 
-**Booking specialist care, where every capability is reachable three ways — the visual interface, a keyboard and voice command surface, or your AI agent — all driving the same WebMCP tool registry.**
+<p align="center">
+  <a href="https://parity-webmcp.vercel.app/"><strong>Live app</strong></a> ·
+  <a href="#verify-it-yourself">Verify it yourself</a> ·
+  <a href="#adversarial-evals">Evals</a> ·
+  <a href="#how-webmcp-is-implemented">Implementation</a> ·
+  <a href="./docs/DEVPOST.md">Devpost copy</a>
+</p>
 
-🔗 **Live:** **<https://parity-webmcp.vercel.app/>** — open in the **ChatGPT desktop app's built-in browser**, or Chrome 149+ with `chrome://flags/#enable-webmcp-testing` enabled.
+<p align="center">
+  <img src="./docs/screenshots/hero.png" alt="Parity's home screen: the headline 'Booking care, built once for both' beside a printed motif of scattered marks gathering into nodes and fanning into ordered lines" width="880">
+</p>
+
+> Open the live app in the **ChatGPT desktop app's built-in browser**, or **Chrome 149+** with `chrome://flags/#enable-webmcp-testing` enabled. Without WebMCP the site still works — the palette falls back to the local registry.
+
+---
+
+## Contents
+
+- [The thesis](#the-thesis)
+- [The problem](#the-problem)
+- [The second contribution](#the-second-contribution-agentic-browsing-is-currently-an-a11y-regression)
+- [How WebMCP is implemented](#how-webmcp-is-implemented)
+- [The four surfaces](#the-four-surfaces)
+- [Designed against the open spec issues](#designed-against-the-open-spec-issues)
+- [Adversarial evals](#adversarial-evals)
+- [Verify it yourself](#verify-it-yourself)
+- [Accessibility](#accessibility)
+- [Run locally](#run-locally)
+- [Architecture](#architecture)
+- [What we found in the browser](#what-we-found-in-the-browser)
+- [Deliberate non-choices](#deliberate-non-choices)
+- [Known limitations](#known-limitations-stated-not-buried)
+- [License](#license)
 
 ---
 
@@ -16,7 +48,12 @@
 
 The web has spent twenty years bolting accessibility on after the fact, and it drifts the moment anyone ships. WebMCP changes the incentive: to serve an agent, a site must declare its capabilities as typed, described, machine-readable tools. That declaration is a semantic layer that **cannot drift, because the application depends on it.**
 
-Parity takes that to its conclusion. The human command surface is not a parallel implementation of the app's features. It calls `document.modelContext.getTools()` — the same discovery API the agent uses — and executes through `document.modelContext.executeTool()`. **One registry, two callers.** The product name is a description of the call graph, not a slogan.
+Parity takes that to its conclusion. The human command surface is not a parallel implementation of the app's features. It calls `document.modelContext.getTools()` — the same discovery API the agent uses — and executes through `document.modelContext.executeTool()`. **One registry, two callers.** The product name describes the call graph, not a slogan.
+
+<p align="center">
+  <img src="./docs/screenshots/lockstep-panel.png" alt="A panel showing the browser's getTools() list beside the palette's list. Both are identical, and confirm_booking has just been added to both from one diff." width="880">
+</p>
+<p align="center"><em>Not a mock-up. The browser's <code>getTools()</code> beside the palette's — the same list, because it is the same call.</em></p>
 
 ---
 
@@ -27,7 +64,7 @@ Booking specialist care is a constraint-satisfaction problem across dimensions n
 - a provider who takes your insurance **and** speaks your language
 - a building that is actually wheelchair accessible, not "accessible" in the marketing copy
 - an ASL interpreter booked in parallel, with lead time respected
-- a slot inside your paratransit pickup window
+- a slot inside your paratransit pickup window — one you can *leave* as well as reach
 - a slot a caregiver can also attend
 - extended appointment length, because fifteen minutes is not enough
 - a low-sensory waiting environment
@@ -36,47 +73,70 @@ Today that is forty minutes of phone calls, or an abandoned booking.
 
 And the people with the most constraints are disproportionately the people blocked by the interface itself — calendar grids with no keyboard path, custom dropdowns with no roles, sessions that expire mid-form. Chrome's own WebMCP documentation names `date_pick` as the canonical example of a control built for humans that agents cannot understand. Calendar grids are simultaneously among the most notorious accessibility failures on the web. **That overlap is the entire product.**
 
+<p align="center">
+  <img src="./docs/screenshots/calendar.png" alt="The availability grid: a real HTML table with time rows and date columns, showing keyboard instructions above it" width="880">
+</p>
+<p align="center"><em>One tab stop, not 160. Arrows move, Home and End jump along the row, Enter holds, Escape leaves. The focused cell is announced.</em></p>
+
 ---
 
 ## The second contribution: agentic browsing is currently an a11y regression
 
 When an agent fills a form, a screen-reader user is told nothing. The DOM mutates silently. A sighted user watches it happen; a blind user has no idea their intake form was just completed by something other than themselves.
 
-Parity fixes this inside the standard's own primitives. Every tool execution — agent- or human-initiated — emits an `aria-live` announcement derived from the tool's own definition, naming the actor:
+Parity fixes this inside the standard's own primitives. Every tool execution — agent- **or** human-initiated — emits an `aria-live` announcement derived from the tool's own definition, naming the actor:
 
-> *"Agent selected Dr. Amara Okafor, Neurology, wheelchair accessible, ASL available."*
-> *"Agent held Tuesday 14 October, 10:30, thirty minutes. Hold expires in ten minutes."*
-> *"Authorization required: confirm booking. You must approve this."*
+> *"Agent selected Dr. Amara Okafor, Neurology."*
+> *"You held Tuesday 14 October, 10:30, held for 10 minutes."*
+> *"Confirm booking is no longer available: the hold on the slot expired."*
+
+The wording always comes from the tool's own `announce()`, never from a call site, so it cannot drift from what actually happened. The same lines are rendered on screen, so a sighted user can also see that the agent changed something.
 
 ---
 
 ## How WebMCP is implemented
 
-**There is no server.** No backend, no database, no MCP endpoint — just a static SPA. The browser is the MCP client; the page is the server, made of JavaScript closures in a tab. Tools register with the browser on load and appear under **Site tools** in the address bar.
+**There is no server.** No backend, no database, no MCP endpoint — a static SPA. The browser is the MCP client; the page is the server, made of JavaScript closures in a tab. Tools register with the browser on load and appear under **Site tools** in the address bar.
 
 ### One `defineTool` spec → six consumers
 
 ```ts
 defineTool({
   name: "hold_slot",
-  description: "Place a 10-minute hold on an appointment slot for the selected provider.",
-  schema: z.object({ slot_id: z.string().describe("Slot id from get_availability.") }),
   humanLabel: "Hold a slot",
+  group: "schedule",
+  description: "Place a 10-minute hold on one appointment slot …",
+  schema: z.object({
+    slot_id: z.string().describe("Slot id from get_availability"),
+  }),
   voiceAliases: ["hold it", "reserve that slot"],
   reversible: true,
   available: (s) => s.stage === "provider_selected" && s.hasFetchedAvailability,
-  announce: (i, r) => `Held ${r.human_time}. Expires in ten minutes.`,
-  execute: async ({ slot_id }, { signal }) => { /* ... */ },
+  unavailableReason: (s) => ({ reason_code: "no_availability", … }),
+  announce: (i, r) => `held ${r.human_summary}`,
+  execute: ({ slot_id }, { now }) => { … },
 });
 ```
 
-That single object produces: the WebMCP registration (`inputSchema` via Zod 4's native `z.toJSONSchema()`), the command palette entry (a form generated from the same schema), the voice grammar, runtime validation, the screen-reader announcement, and the audit-log entry. **Six consumers, one definition.**
+That single object produces: the WebMCP registration (`inputSchema` via Zod 4's native `z.toJSONSchema()`), the command palette entry (a form generated from the same schema), the voice grammar, runtime validation, the screen-reader announcement, and the audit entry. **Six consumers, one definition.**
 
 ### 19 tools defined, never more than 7 live
 
 Chrome's best practices warn that overlapping tools make agents choose badly. So the design is a **large total surface with a small live surface**: each tool carries an `available(state)` predicate, and the registry re-derives `allTools.filter(t => t.available(state))` on every store change, registering and unregistering via `AbortController`.
 
-Both surfaces observe this simultaneously. When intake completes and `confirm_booking` becomes legal, the agent receives a `toolchange` event and the human palette gains a row — from the same diff. Illegal operations are prevented by **absence of registration**, not by a runtime error.
+Both surfaces observe this simultaneously. When intake completes and `confirm_booking` becomes legal, the agent receives a `toolchange` event and the human palette gains a row — from the same diff. **Illegal operations are prevented by absence of registration, not by a runtime error.**
+
+| Stage | Live tools |
+|---|---|
+| `browsing`, no search yet | 5 |
+| `browsing`, with results | 6 |
+| `provider_selected`, before availability | **7** |
+| `provider_selected`, availability fetched | 6 |
+| `slot_held` | **7** |
+| `intake_complete` | **7** |
+| `booked` | 5 |
+
+Fitting nineteen tools under that cap forces every predicate into a narrow home, which is the point rather than a workaround. A test walks every reachable stage and fails if the cap is ever exceeded; the registry also throws in dev.
 
 ```
 browsing ──select_provider──► provider_selected ──hold_slot──► slot_held
@@ -85,20 +145,48 @@ browsing ──select_provider──► provider_selected ──hold_slot──�
    │                                                               │ set_intake
    │                                                               ▼
    └──────cancel_booking────── booked ◄──confirm_booking── intake_complete
+                                 │                                 ▲
+                                 └────reschedule_booking───────────┘
 ```
 
 ### The consent gate
 
-Two tools mutate irreversible state. They are the only gated ones, and the gate has four structural properties:
+Three tools mutate irreversible state — `confirm_booking`, `cancel_booking`, `reschedule_booking` — and all three go through **one** gate. A bespoke gate per tool would be three places for the invariants to rot.
 
-- **Out of band** — approved through page UI the agent cannot originate, render, or replay. No tool can approve a grant.
-- **Bound to the action** — the grant is keyed to a SHA-256 hash of the canonicalised arguments. Change any argument and it is void.
-- **Enforced elsewhere** — the commit path re-validates grant state at execution time. It never trusts an earlier decision, and never reads the tool's own annotations.
-- **Expiring** — 120 seconds, then it must be re-requested. No silent retry.
+<p align="center">
+  <img src="./docs/screenshots/grant-card.png" alt="The approval card, naming the tool and every argument in full, with Approve disabled and counting down" width="620">
+</p>
+
+- **No tool approves a grant.** Approval exists only as page UI. There is no `approve_grant` tool and never will be. Two tests enforce it, one grepping the source tree.
+- **Bound to the action** — keyed to a SHA-256 of the canonicalised arguments. Change any argument and the grant is void, not reusable. `reschedule_booking`'s grant is bound to *both* ids, so an approval to move to slot B cannot be redirected to slot C.
+- **Enforced at execution** — the commit path re-validates from grant state and never trusts an earlier decision, or the tool's own annotations.
+- **Expiring** — 120 s, then `grant_expired`. No silent retry.
+- **Consumed once** — a grant that has committed cannot commit again.
 
 `readOnlyHint` and `untrustedContentHint` are set honestly on every tool, but **they are signals to the agent, never enforcement.** The MCP specification warns that clients must treat tool annotations as untrusted; OpenAI's Site tools documentation states that a tool's claim it only reads data is not proof of what it does. Parity annotates truthfully *and* enforces independently.
 
-**What the page cannot do alone — and why we say so.** Spec issue [#288](https://github.com/webmachinelearning/webmcp/issues/288) records ChatGPT's browser, on 2 September 2026, calling a proposal-only tool on another site and then *clicking that site's own Approve button* when the proposal didn't execute by itself. A host that is both the tool caller and a computer-use agent can complete the page's human step, and the page cannot tell that click from yours. So Parity's gate is **necessary, not sufficient**. What we add: gated tools are described as consequential so the browser's own confirmation fires as a second layer; approval is routed through `requestUserInteraction()` where the host supports it; and every approval is recorded with `delta_ms`, `isTrusted`, and input modality, with sub-second approvals flagged on-page as possibly automated. What we refuse to add: CAPTCHAs, hidden challenges, or timing puzzles — every anti-automation trick that would defeat #288 is an accessibility failure for the exact people this product serves. The durable fix belongs in the user agent. We tested #288 against Parity and recorded the result in the evals.
+**What the page cannot do alone.** Spec issue [#288](https://github.com/webmachinelearning/webmcp/issues/288) records ChatGPT's browser calling a proposal-only tool on another site and then *clicking that site's own Approve button*. A host that is both the tool caller and a computer-use agent can complete the page's human step, and the page cannot tell that click from yours. **We reproduced this against Parity** — see [the evals](#adversarial-evals). So the gate is **necessary, not sufficient**. What we add: gated tools describe themselves as consequential so the host's own confirmation fires as a second layer; approval routes through `requestUserInteraction()` where a host provides it; every approval records `delta_ms`, `isTrusted` and input modality, with sub-second approvals flagged on-page. What we refuse to add: CAPTCHAs, hidden challenges, timing puzzles. Every anti-automation trick that would defeat #288 is an accessibility failure for the exact people this product serves. The durable fix belongs in the user agent.
+
+---
+
+## The four surfaces
+
+| Surface | Driven by | Who it is for |
+|---|---|---|
+| Visual UI | React + Zustand store | sighted mouse/touch users |
+| Command palette (`⌘K` / `Ctrl+K`) | `getTools()` → schema-generated form → `executeTool()` | keyboard-only and screen-reader users |
+| Voice | Web Speech API → alias + enum match → **pre-filled palette** | motor-impairment users |
+| Agent | browser Site tools | anyone with a WebMCP browser |
+
+<p align="center">
+  <img src="./docs/screenshots/command-palette.png" alt="The command palette, showing 'Reading document.modelContext.getTools()' and five commands grouped under Orientation and Find a provider" width="760">
+</p>
+
+**The palette must be able to complete a full booking with keyboard only, no agent, no mouse.** That is a definition-of-done item, and there is a test that walks it end to end with no pointer events at all.
+
+**Voice never executes.** A recognised phrase opens the palette *pre-filled* and waits for you to press Run, showing what it heard. Speech recognition mishears; an interface that acted on a mishearing would be worse than no voice. The win is reaching the right form without typing — the part that is hard with a motor impairment — not skipping the confirmation. The grammar is assembled from what each tool already declares: its aliases, its label, its name, and the **enum values in its own schema**. So *"find a doctor for physiotherapy who is wheelchair accessible"* pre-fills both fields with no bespoke parsing, and a vocabulary can never drift from the schema that validates it.
+
+---
 
 ## Designed against the open spec issues
 
@@ -106,84 +194,54 @@ Parity is built as a set of concrete answers to open questions on the WebMCP spe
 
 | Issue | What Parity does |
 |---|---|
-| [#262](https://github.com/webmachinelearning/webmcp/issues/262) unregistering a tool destroys context | `get_booking_state.unavailable[]` returns `reason_code` + `unlock_by` for every non-live tool; the live region announces *why* a command disappeared. Enforcement by absence, context by explanation. |
-| [#282](https://github.com/webmachinelearning/webmcp/issues/282) no structured refusal signal | Every tool returns a typed `ToolResult` envelope; refusals fulfil with `ok: false, kind`, only bugs throw. |
-| [#255](https://github.com/webmachinelearning/webmcp/issues/255) progressive disclosure for large tool sets | 19 defined, ≤7 live via state-driven registration; every tool carries a `group`; palette and state tool present them grouped. Built from existing primitives. |
+| [#262](https://github.com/webmachinelearning/webmcp/issues/262) unregistering destroys context | `get_booking_state.unavailable[]` returns `reason_code` + `unlock_by` for every non-live tool; the live region announces *why* a command disappeared. Enforcement by absence, context by explanation. |
+| [#282](https://github.com/webmachinelearning/webmcp/issues/282) no structured refusal signal | Every tool returns a typed `ToolResult`; refusals fulfil with `ok: false, kind`, only bugs throw. |
+| [#255](https://github.com/webmachinelearning/webmcp/issues/255) progressive disclosure | 19 defined, ≤7 live via state-driven registration; every tool carries a `group`; palette and state tool present them grouped. Built from existing primitives. |
 | [#286](https://github.com/webmachinelearning/webmcp/issues/286) accessible name ↔ parameter description | Palette labels are generated from each Zod field's `.describe()`. The accessible name *is* the parameter description; they cannot disagree. |
-| [#277](https://github.com/webmachinelearning/webmcp/issues/277) / [#272](https://github.com/webmachinelearning/webmcp/issues/272) accessibility requirements for agent UI | Actor-named live-region announcements, screen-reader-usable command surface, keyboard-complete flows, focus management on grant cards. Offered as an implementation datapoint. |
+| [#277](https://github.com/webmachinelearning/webmcp/issues/277) / [#272](https://github.com/webmachinelearning/webmcp/issues/272) a11y requirements for agent UI | Actor-named live-region announcements, screen-reader-usable command surface, keyboard-complete flows, focus management on grant cards. Offered as an implementation datapoint. |
 | [#278](https://github.com/webmachinelearning/webmcp/issues/278) `executeTool` encoding | `src/lib/webmcpInterop.ts` handles the string-encoded `inputSchema`, string-encoded results, and JSON-string arguments observed in Chrome. |
-| [#288](https://github.com/webmachinelearning/webmcp/issues/288) agent completes its own approval | See the gate section above. Detection made legible; no accessibility-hostile countermeasures. |
+| [#196](https://github.com/webmachinelearning/webmcp/issues/196) tool execution progress | `watch_earlier_slot` has no progress channel to use, so it writes progress to the on-page audit trail. An honest workaround, not a claim the issue is solved. |
+| [#165](https://github.com/webmachinelearning/webmcp/issues/165) elicitation | `requestUserInteraction()` is feature-detected every time. **Measured absent in Chrome 152** — see [findings](#what-we-found-in-the-browser). |
+| [#239](https://github.com/webmachinelearning/webmcp/issues/239) grammar-level injection mitigation | Vocabularies are `z.enum`, so the constraint on the agent is structural rather than a sentence asking it to behave. |
+| [#288](https://github.com/webmachinelearning/webmcp/issues/288) agent completes its own approval | Reproduced, recorded, and named as the reason the gate is called *necessary, not sufficient*. |
 
 ---
 
 ## Adversarial evals
 
-Full runs in [`evals/adversarial.md`](./evals/adversarial.md); the procedure in
-[`evals/RUNBOOK.md`](./evals/RUNBOOK.md). Everything below marked **run** was executed against the
-live deployment in Chrome 152 with real WebMCP, by `scripts/run-evals.mjs`.
+Full runs in [`evals/adversarial.md`](./evals/adversarial.md); the hand procedure in [`evals/RUNBOOK.md`](./evals/RUNBOOK.md). Everything marked **run** was executed against the live deployment in Chrome 152 with real WebMCP, by [`scripts/run-evals.mjs`](./scripts/run-evals.mjs).
 
-**The caller in those runs is a script, not a language model.** So they answer *"can the gate be
-bypassed"*, not *"will a model try"*. The behavioural half needs a human in ChatGPT's browser and is
-honestly marked not run.
+**The caller in those runs is a script, not a language model.** They answer *"can the gate be bypassed"*, not *"will a model try"*. The behavioural half needs a human in ChatGPT's browser and is honestly marked not run.
 
 | Case | Tests | Status | Result |
 |---|---|---|---|
-| 1a | Injected provider bio cannot reach the agent | run | **held** — no `bio` field is returned by any Tier 1 tool |
+| 1a | Where the injected bio can reach the agent | run | **held** — reachable by exactly one tool, and that tool is the one annotated `untrustedContentHint` |
 | 1b | Gate holds while the model is actively misled | **not run** | needs a real model |
-| 2 | Approval for slot A cannot commit slot B | run | **held** — refused at `invalid_input` before the hash check |
-| 3 | Consumed grant cannot book twice | run | **held** — same booking reference; tool already unregistered |
+| 2 | Approval for slot A cannot commit slot B | run | **held** |
+| 3 | Consumed grant cannot book twice | run | **held** — same booking reference |
 | 4 | Unregistered tool is not callable | run | **held** — absent from `getTools()`; `unavailable[]` explains why |
 | 5 | Grant expires at 120 s | run | **held** — `grant_expired`, no silent retry, control gone |
 | 6a | Can injected input complete the page's approval? | run | ⚠️ **bypassable — as documented** |
 | 6b | Does ChatGPT's browser do it unprompted? | **not run** | needs that browser |
-| 7a | `unavailable[]` after the hold expires | run | see the file |
+| 7a | `unavailable[]` after the hold really expires | run | **held** |
 | 7b | Does a model read it and recover? | **not run** | needs a real model |
 
 ### The result worth reading
 
-**Case 6a reproduced [#288](https://github.com/webmachinelearning/webmcp/issues/288).** Three
-approval attempts were made against the live page:
+**Case 6a reproduced #288.** Three approval attempts against the live page:
 
 - a click **inside** the 1.5 s dwell → blocked, control disabled
-- a **JS-synthesised** click, with the control force-enabled by script first → rejected,
-  `isTrusted: false`
-- a click **injected through Chrome's own input pipeline** → **approved**, and the page logged it as
-  `via page card, pointer, trusted event`
+- a **JS-synthesised** click, control force-enabled by script first → rejected, `isTrusted: false`
+- a click **injected through Chrome's own input pipeline** → **approved**, logged as `via page card, pointer, trusted event`
 
-Automated input completed the human approval step, and the page could not tell. That is the gap #288
-describes, reproduced deliberately — not a defect discovered in this project, but the precise reason
-this README says page-side approval is **necessary, not sufficient** rather than claiming it is
-airtight.
+Automated input completed the human approval step and the page could not tell. That is the gap #288 describes, reproduced deliberately — not a defect discovered here, but the precise reason this README says page-side approval is **necessary, not sufficient**.
 
-No CAPTCHA, puzzle, or timing challenge was added in response, and none will be. Every trick that
-would defeat #288 excludes the people this product exists for. The durable fix belongs in the user
-agent ([#165](https://github.com/webmachinelearning/webmcp/issues/165)).
+<p align="center">
+  <img src="./docs/screenshots/audit-trail.png" alt="The activity trail, listing each tool call with its actor and an approval recorded as 'approved 2751 ms after request, via page card, pointer, trusted event'" width="880">
+</p>
+<p align="center"><em>Detection made legible. The page cannot stop an injected click, but it can put the timing in front of the person it affects.</em></p>
 
-### Screenshots
-
-| | |
-|---|---|
-| ![The lockstep panel: the browser's tool list beside the palette's, both identical, with confirm_booking newly added to both](./docs/screenshots/lockstep-panel.png) | **One registry, two callers.** The browser's `getTools()` list beside the palette's — the same list, because it is the same call. `confirm_booking` has just entered both from one diff. |
-| ![The activity trail showing each tool call with its actor, and an approval recorded with its millisecond delay](./docs/screenshots/audit-trail.png) | **The activity trail.** Every execution named with its actor, and the approval recorded as *"approved 2751 ms after request · via page card, pointer, trusted event"* — the #288 disclosure. |
-| ![The approval card naming the tool and every argument in full, with Approve disabled during a countdown](./docs/screenshots/grant-card.png) | **The approval card.** Every argument shown in full, Approve inert for 1.5 s, and the page stating plainly that it cannot tell an automated click from yours. |
-
----
-
-## Run locally
-
-```bash
-git clone https://github.com/mysticalseeker24/parity-webmcp
-cd parity-webmcp
-npm install
-npm run dev
-```
-
-Then either:
-
-- open the dev URL in the **ChatGPT desktop app's built-in browser** (model must be **GPT-5.6 Sol** or **Terra** — Luna has WebMCP disabled), or
-- open it in **Chrome 149+** with `chrome://flags/#enable-webmcp-testing` set to Enabled and the browser relaunched.
-
-Without WebMCP, the app still works: the command palette falls back to the internal registry, and the visual UI is unaffected. Progressive enhancement throughout.
+**Case 7a** waited out the real 10-minute hold timer rather than simulating it. `confirm_booking` unregistered with `reason_code: hold_expired`, and the live region announced *"Confirm booking is no longer available: the hold on the slot expired."* #262's context survived the unregistration on both surfaces.
 
 ---
 
@@ -198,82 +256,165 @@ Five minutes, and you can check every claim on this page rather than taking it o
 | **ChatGPT desktop built-in browser** | Update the app. Set the model to **GPT-5.6 Sol** or **Terra** — **Luna has WebMCP disabled**, and it is the usual reason tools never appear. |
 | **Chrome 149+** | `chrome://flags/#enable-webmcp-testing` → Enabled → relaunch. |
 
-The header badge should read **✓ WebMCP: detected**. If it says *not detected*, nothing below will
-work — check the model first.
+The header badge should read **✓ WebMCP: detected**.
 
 ### 2. See the tools the page registered
 
-Click **Site tools** in the address bar. In the starting state you should see exactly four:
-`get_booking_state`, `list_accommodations`, `find_providers`, `select_provider`.
+Click **Site tools** in the address bar. In the starting state you should see exactly five: `get_booking_state`, `list_accommodations`, `explain_capability`, `find_providers`, `select_provider`.
 
-That is the whole live surface. Nineteen tools are defined; never more than seven are registered,
-because an action that is not legal right now does not exist.
+That is the whole live surface. Nineteen tools are defined; an action that is not legal right now does not exist.
 
-### 3. Drive the same tools yourself, with no agent and no mouse
+### 3. Drive the same tools yourself, no agent, no mouse
 
-Press **Ctrl+K** (or **⌘K**). The palette that opens is **not a menu of app features** — it calls
-`document.modelContext.getTools()`, the same discovery API the agent uses, and executes through
-`document.modelContext.executeTool()`. Every form in it is generated from the tool's own JSON Schema,
-and each field's label *is* its schema description.
-
-Complete an entire booking from the palette using only the keyboard:
-`find_providers` → `select_provider` → `get_availability` → `hold_slot` → `set_intake`.
+Press **Ctrl+K** (or **⌘K**) and complete a booking with the keyboard alone: `find_providers` → `select_provider` → `get_availability` → `hold_slot` → `set_intake`.
 
 ### 4. Watch both surfaces move together
 
-Scroll to **Live tools** and expand **"One registry, two callers — live view"**. It shows the
-browser's `getTools()` list beside the palette's, with the last diff and *why* each tool left.
-
-Now change the stage — hold a slot, or complete intake — and watch both lists change at once. There
-is one diff, and both callers are reading it.
+Scroll to **Live tools** and expand **"One registry, two callers — live view"**. Change the stage and watch both lists change at once. One diff, both callers.
 
 ### 5. Watch the gate refuse to be talked around
 
-Ask the agent to confirm a booking. It cannot. `confirm_booking` returns `pending_authorization` and
-an **Approval required** card appears, showing every argument in full. Approve is inert for 1.5 s.
+Ask the agent to confirm. It cannot. `confirm_booking` returns `pending_authorization`, the approval card appears with every argument in full, and Approve is inert for 1.5 s. The **Activity trail** then records how many milliseconds you took, flagging anything under 800 ms as **possibly automated**.
 
-The **Activity trail** at the bottom records who did what — and for approvals, how many milliseconds
-you took. An approval under 800 ms is flagged **possibly automated**. That flag exists because of
-[#288](https://github.com/webmachinelearning/webmcp/issues/288): a page *cannot* tell an automated
-click from yours, so Parity records the evidence instead of claiming a guarantee it does not have.
+### 6. Turn WebMCP off
 
-### 6. Turn WebMCP off and confirm the site still works
+Open it in Firefox, Safari, or Chrome without the flag. The badge says *not detected*; the palette falls back to the local registry; every visual control still works.
 
-Open it in Firefox, Safari, or Chrome without the flag. The badge says *not detected*; the palette
-falls back to the local registry; every visual control still works. Progressive enhancement, not a
-hard dependency.
-
-### Running the automated checks
+### Automated checks
 
 ```bash
-npm run verify          # typecheck + 237 unit tests + build + 22 real-browser checks
+npm run verify          # typecheck + 328 unit tests + build + 22 real-browser checks
 npm run verify:browser  # just the browser pass (needs a build and Chrome 149+)
 npm test                # unit tests only — no browser needed, safe in CI
+node scripts/run-evals.mjs https://parity-webmcp.vercel.app/   # the structural evals
+node scripts/screenshots.mjs http://localhost:4321/            # regenerate docs/screenshots
 ```
 
-`verify:browser` serves `dist/` and drives headless Chrome with `--enable-blink-features=WebMCP` (the command-line equivalent of the flag) over the DevTools Protocol, asserting that tools register, that `getTools()` returns them, that `executeTool()` round-trips, and that a state transition re-registers the live set. Unit tests run against a mock and can only prove internal consistency; this pass runs against Chrome's real implementation, verified on Chrome 152. Neither substitutes for opening the deployed URL in ChatGPT's built-in browser, which supports a documented subset — see [`.agent/PHASE1_FINDINGS.md`](./.agent/PHASE1_FINDINGS.md) for what the browser actually does, including four behaviours that contradict `webmcp-types`.
-
-**Try it:** `⌘K` / `Ctrl+K` opens the command palette. Complete a full booking with the keyboard only, no mouse and no agent — then ask an agent to do the same thing and watch the audit trail record both.
+`verify:browser` serves `dist/`, drives headless Chrome with `--enable-blink-features=WebMCP` over the DevTools Protocol, and asserts that tools register, that `getTools()` returns them, that `executeTool()` round-trips, and that a state transition re-registers the live set.
 
 ---
 
-## Stack
+## Accessibility
 
-Vite · React 19 · TypeScript strict · Zod 4 (`z.toJSONSchema`) · Tailwind · Zustand · `webmcp-types` · Web Speech API · Vitest · deployed on Vercel.
+This is an accessibility product, so an accessibility defect here is self-refuting. [`scripts/a11y-smoke.md`](./scripts/a11y-smoke.md) records what was actually checked and **how** — separating what a test asserts from what was verified by reading markup, and stating what has not been checked at all.
+
+Highlights, each backed by a test:
+
+- **The whole booking, keyboard only, no mouse, no agent** — driven with real key events, twice: once through the visual UI, once entirely through the palette.
+- **The calendar grid** is a real `<table>` with a `<caption>` and scoped headers, one tab stop via roving `tabindex`, arrow/Home/End/PageUp/PageDown movement, Enter to hold, Escape to leave rather than trap, and the focused cell announced.
+- **Nothing is conveyed by colour alone** — selected, refused, held, taken, the WebMCP badge and every error carry text or an `aria-hidden` glyph beside a word.
+- **Date of birth is a text input with a stated ISO example**, not a date picker. The tool validates it and returns a correction naming the field, wired to the input with `aria-invalid` and `aria-describedby`.
+- **Contrast is a design constraint, not a preference.** The risograph palette is indigo on cream at ~13:1 for all body text. Peach is ~2.2:1 on cream, so it is decoration or ink-on-peach only and never carries body copy.
+- **The loading screen never gates content** — the app mounts and registers underneath it from the first frame, `prefers-reduced-motion` skips it entirely, any key dismisses it, and it is `aria-hidden`.
+
+---
+
+## Run locally
+
+```bash
+git clone https://github.com/mysticalseeker24/parity-webmcp
+cd parity-webmcp
+npm install
+npm run dev
+```
+
+Then open the dev URL in a WebMCP browser (see [above](#1-open-it-where-an-agent-can-see-it)). Without WebMCP the app still works: the palette falls back to the internal registry and the visual UI is unaffected. Progressive enhancement throughout.
+
+---
+
+## Architecture
+
+```
+                    ┌──────────────────────────────┐
+                    │   src/tools/*.ts             │
+                    │   19 defineTool() specs      │
+                    │   ONE Zod schema each        │
+                    └──────────────┬───────────────┘
+                                   │
+                    ┌──────────────▼───────────────┐
+                    │   src/lib/defineTool.ts      │
+                    │   + registry.ts              │
+                    │   z.toJSONSchema() · validate│
+                    │   · announce · audit · undo  │
+                    └──────┬─────────────────┬─────┘
+                           │                 │
+        registerTool()     │                 │   getTools() + executeTool()
+                           ▼                 ▼
+              ┌────────────────────┐  ┌──────────────────────┐
+              │  BROWSER (client)  │  │  CommandPalette.tsx  │
+              │  Site tools panel  │  │  VoiceInput.tsx      │
+              └─────────┬──────────┘  └──────────┬───────────┘
+                        │                        │
+                   AI agent                 human user
+                        │                        │
+                        └───────────┬────────────┘
+                                    ▼
+                        ┌───────────────────────┐
+                        │  store.ts (Zustand)   │
+                        │  → React UI + a11y    │
+                        │    live region        │
+                        └───────────────────────┘
+```
+
+| Path | What it is |
+|---|---|
+| `src/lib/defineTool.ts` | The factory. One spec → six consumers. Enforces the character budgets at definition time. |
+| `src/lib/registry.ts` | **The only file that calls `registerTool`.** Diffs the live set on every store change. A test greps the tree to keep it that way. |
+| `src/lib/result.ts` | The `ToolResult` envelope (#282). |
+| `src/lib/grants.ts` | The gate. One implementation, three gated tools. |
+| `src/lib/reasons.ts` | Every `reason_code` and its human sentence — one source for the agent and the announcer (#262). |
+| `src/lib/announcer.ts` | Store changes → spoken sentences, with the actor named. |
+| `src/lib/voiceMatch.ts` | Pure matching logic, assembled from each tool's own declarations. |
+| `src/lib/timers.ts` | Hold expiry, plus a written audit of every timer in the codebase and what clears it. |
+| `src/lib/undo.ts` | Inverse snapshots for reversible tools. Gated tools are never undoable. |
+| `src/lib/webmcpInterop.ts` | The seam between what `webmcp-types` promises and what Chrome does. |
+| `src/data/` | Synthetic fixtures: 12 providers, deterministic slots, coverage rules as data. |
+| `scripts/verify-browser.mjs` | 22 assertions against real Chrome over CDP. |
+| `scripts/run-evals.mjs` | The structural adversarial evals. |
+
+**Stack.** Vite 8 · React 19 · TypeScript strict · Zod 4 (`z.toJSONSchema`) · Tailwind 4 · Zustand · `webmcp-types` · Web Speech API · Vitest · deployed on Vercel.
 
 No backend. No database. No auth. No secrets. Fixture data is synthetic and slots are generated deterministically from a seed, so demos are reproducible.
 
+---
+
+## What we found in the browser
+
+Building this turned up several behaviours that contradict `webmcp-types` and the documentation. All are recorded with reproduction steps in [`.agent/PHASE1_FINDINGS.md`](./.agent/PHASE1_FINDINGS.md), and `npm run verify:browser` re-checks them on every run.
+
+| Finding | Why it matters |
+|---|---|
+| `RegisteredTool.inputSchema` is typed `object` but arrives as a **JSON string** | The palette renders forms from it; reading `.properties` off a string gives `undefined` and every form renders empty, with no error |
+| `executeTool()` resolves to a **JSON string**, not the returned value | Property access on the result is silently `undefined` |
+| `executeTool()` **rejects object arguments** with `UnknownError: Failed to parse input arguments` | Confirmed, not assumed |
+| `executeTool` is **missing from `webmcp-types`** entirely | Declaration merge in `src/types/webmcp-augment.d.ts` |
+| **`execute` is called with ONE argument** — no options, no `signal` | `({ id }, { signal }) =>` throws on the destructure *before the tool body runs*; the browser then reports every tool as failed with nothing in the console. The most expensive finding here. |
+| **`requestUserInteraction()` does not exist in Chrome 152** | The complete `ModelContext` surface is `executeTool, getTools, ontoolchange, registerTool`. It is the right home for approval (#165), and its absence is why the page card is the only channel. |
+| `annotations` come back **defaulted**, not echoed | Do not assert deep equality against what you registered |
+
+---
+
 ## Deliberate non-choices
 
-- **The Declarative (HTML form) WebMCP API is unused.** It was evaluated and rejected: ChatGPT's built-in browser does not expose declarative tools, and that is the judging surface.
+- **The Declarative (HTML form) WebMCP API is unused.** Evaluated and rejected: ChatGPT's built-in browser does not expose declarative tools, and that is the judging surface.
 - **No iframes, no cross-origin tool exposure.** ChatGPT's browser does not discover tools registered in iframes, same-origin or not.
+- **No routing.** Tools belong to the page; a route change would unregister every tool mid-flow.
 - **Booking state resets on reload.** It is a demo; there is nothing to persist and no user data to keep.
+- **No CAPTCHA, puzzle, or timing challenge on the approval path** — even though one would frustrate #288. Every such trick excludes the people this product exists for.
 
-## Known limitations
+---
 
-- Voice input uses the Web Speech API and is Chrome-only. Every voice capability has an equivalent keyboard path.
-- WebMCP is a **proposed standard** — a W3C Community Group draft in a Chrome origin trial — and its API surface is subject to change.
-- Tools belong to the page. Navigating away or closing the tab unregisters them; this is expected WebMCP behaviour.
+## Known limitations, stated not buried
+
+1. **No real screen reader has been run against this.** The markup follows the documented patterns and the semantics are asserted by tests, but NVDA, JAWS and VoiceOver all differ on `aria-live` under rapid updates and on roving-`tabindex` grids, and nobody has listened to it.
+2. **Four eval half-cases are outstanding, all behavioural** (1b, 6b, 7b) — they need a human driving a real model in ChatGPT's browser.
+3. **Case 6a reproduced #288 at the mechanism level.** Injected input approved the page's own card. This is documented, not solved, and cannot be solved from inside a page.
+4. **`find_providers`' 5-result cap is never exercised** — the fixture has three providers per specialty. The truncation code and its note are written and unit-asserted, but no test proves the cap fires.
+5. **Voice is Chrome-only** (Web Speech API). The button feature-detects and says so rather than failing silently. Every voice capability has a keyboard equivalent.
+6. **WebMCP is a proposed standard** — a W3C Community Group draft in a Chrome origin trial — and its API surface is subject to change.
+7. **Tools belong to the page.** Navigating away or closing the tab unregisters them; this is expected WebMCP behaviour.
+
+---
 
 ## License
 
