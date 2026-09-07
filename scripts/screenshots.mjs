@@ -9,8 +9,9 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { extname, join } from "node:path";
 
 const URL_UNDER_TEST = process.argv[2] ?? "https://parity-webmcp.vercel.app/";
 const PORT = Number(process.env.SHOT_CDP_PORT ?? 9455);
@@ -28,6 +29,35 @@ if (!chrome) {
   process.exit(2);
 }
 mkdirSync(OUT, { recursive: true });
+
+/**
+ * Serve ./dist when pointed at localhost, so the current build can be shot
+ * without a separate terminal. A remote URL is used as-is.
+ */
+let staticServer = null;
+if (/^https?:\/\/localhost/.test(URL_UNDER_TEST)) {
+  const port = Number(new URL(URL_UNDER_TEST).port || 80);
+  const MIME = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+  };
+  staticServer = createServer((req, res) => {
+    let file = join("dist", decodeURIComponent((req.url ?? "/").split("?")[0]));
+    // A directory (including "/") is the SPA entry, not a readable file.
+    if (!existsSync(file) || statSync(file).isDirectory()) file = join("dist", "index.html");
+    try {
+      res.writeHead(200, { "Content-Type": MIME[extname(file)] ?? "application/octet-stream" });
+      res.end(readFileSync(file));
+    } catch {
+      res.writeHead(404).end("not found");
+    }
+  });
+  await new Promise((r) => staticServer.listen(port, r));
+  console.log(`Serving ./dist on ${URL_UNDER_TEST}`);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let ws;
@@ -134,6 +164,32 @@ try {
 
   console.log("Capturing…");
 
+  // The loading sheet, if it is still up. It clears itself after 1.4 s and is
+  // skipped entirely under prefers-reduced-motion, so this is best-effort.
+  if (await evaluate(`!!document.querySelector('[data-testid="loading-screen"]')`)) {
+    const { data } = await send("Page.captureScreenshot", {
+      format: "png",
+      clip: { x: 0, y: 0, width: 1280, height: 900, scale: 1.2 },
+    });
+    writeFileSync(join(OUT, "loading-screen.png"), Buffer.from(data, "base64"));
+    console.log(`  wrote ${OUT}/loading-screen.png`);
+  }
+
+  // Wait for the sheet to clear, then shoot the hero underneath it.
+  for (let i = 0; i < 40; i++) {
+    if (!(await evaluate(`!!document.querySelector('[data-testid="loading-screen"]')`))) break;
+    await sleep(100);
+  }
+  await sleep(300);
+  {
+    const { data } = await send("Page.captureScreenshot", {
+      format: "png",
+      clip: { x: 0, y: 0, width: 1280, height: 820, scale: 1.5 },
+    });
+    writeFileSync(join(OUT, "hero.png"), Buffer.from(data, "base64"));
+    console.log(`  wrote ${OUT}/hero.png`);
+  }
+
   // Drive to intake_complete so the interesting states are on screen.
   await callTool("find_providers", { specialty: "neurology" });
   await callTool("select_provider", { provider_id: "p01" });
@@ -203,6 +259,7 @@ NOT CAPTURABLE FROM HERE:
 } finally {
   try { ws?.close(); } catch { /* closing */ }
   proc.kill();
+  staticServer?.close();
 }
 
 process.on("unhandledRejection", () => {});

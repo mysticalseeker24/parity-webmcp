@@ -62,16 +62,19 @@ describe("App shell", () => {
 
   it("gives every section a heading, in document order", () => {
     render(<App />);
+    // The step number is an aria-hidden badge, so it is in the text content but
+    // not in the accessible name.
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
       "Your booking",
-      "1. Find a provider",
-      "2. Choose a provider",
-      "3. Pick a time",
-      "4. Patient details",
+      "1Find a provider",
+      "2Choose a provider",
+      "3Pick a time",
+      "4Patient details",
       "What just happened",
       "Activity trail",
       "Live tools",
     ]);
+    expect(screen.getByRole("region", { name: "Choose a provider" })).toBeDefined();
   });
 });
 
@@ -96,7 +99,7 @@ describe("the whole booking, keyboard only", () => {
     expect(store().lastSearch?.result_ids.length).toBeGreaterThan(0);
 
     // --- 2. Select a provider with Enter on its button.
-    const results = screen.getByRole("region", { name: "2. Choose a provider" });
+    const results = screen.getByRole("region", { name: "Choose a provider" });
     const selectButton = within(results).getAllByRole("button", { name: /^Select Dr\./ })[0]!;
     selectButton.focus();
     await user.keyboard("{Enter}");
@@ -144,7 +147,7 @@ describe("provider list", () => {
     await user.click(button);
 
     // Scoped: the audit trail legitimately shows the same reason text.
-    const results = screen.getByRole("region", { name: "2. Choose a provider" });
+    const results = screen.getByRole("region", { name: "Choose a provider" });
     const error = await within(results).findByText(/does not offer ASL interpreter/);
     expect(button.getAttribute("aria-describedby")).toBe(error.closest("p")!.id);
     expect(store().stage).toBe("browsing");
@@ -174,7 +177,7 @@ describe("intake form", () => {
     await user.click(screen.getByRole("button", { name: "Save patient details" }));
 
     const dob = screen.getByLabelText("Date of birth");
-    const intake = screen.getByRole("region", { name: "4. Patient details" });
+    const intake = screen.getByRole("region", { name: "Patient details" });
     expect(await within(intake).findByText(/must be ISO 8601/)).toBeDefined();
     expect(dob.getAttribute("aria-invalid")).toBe("true");
     expect(dob.getAttribute("aria-describedby")).toMatch(/dob-error/);

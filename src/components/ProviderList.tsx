@@ -23,7 +23,7 @@ export function ProviderList() {
 
   if (!lastSearch) {
     return (
-      <p className="text-slate-600">
+      <p className="text-ink-soft">
         No search yet. Use the command palette or ask the agent to find providers.
       </p>
     );
@@ -34,7 +34,7 @@ export function ProviderList() {
     .filter((p): p is NonNullable<typeof p> => p !== undefined);
 
   if (providers.length === 0) {
-    return <p className="text-slate-600">That search matched no providers.</p>;
+    return <p className="text-ink-soft">That search matched no providers.</p>;
   }
 
   async function select(providerId: string) {
@@ -58,24 +58,24 @@ export function ProviderList() {
         return (
           <li
             key={provider.id}
-            className={`rounded-lg border p-4 ${
-              isSelected ? "border-emerald-700 bg-emerald-50" : "border-slate-300 bg-white"
+            className={` border-[1.5px] p-4 ${
+              isSelected ? "border-ink bg-stock-deep" : "border-ink bg-stock"
             }`}
           >
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-lg font-semibold text-slate-900">
+              <h3 className="text-lg font-semibold text-ink">
                 {provider.name}
-                {/* Selection is conveyed in text, not by the green border alone. */}
+                {/* Selection is conveyed in text, not by the green border-[1.5px] alone. */}
                 {isSelected && (
-                  <span className="ml-2 text-sm font-semibold text-emerald-800">· Selected</span>
+                  <span className="ml-2 text-sm font-semibold text-ink">· Selected</span>
                 )}
               </h3>
-              <p className="text-sm text-slate-700">
+              <p className="text-sm text-ink">
                 {provider.location.area} · {provider.location.distance_km} km
               </p>
             </div>
 
-            <p className="mt-1 text-sm text-slate-700">
+            <p className="mt-1 text-sm text-ink">
               Speaks {provider.languages.join(", ")} · Interpreter lead time{" "}
               {provider.interpreter_lead_time_days} days
             </p>
@@ -92,13 +92,13 @@ export function ProviderList() {
               onClick={() => void select(provider.id)}
               disabled={busy === provider.id}
               aria-describedby={refusal ? errorId : undefined}
-              className="mt-3 rounded bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+              className="mt-3 rounded bg-ink px-4 py-2 font-semibold text-stock hover:bg-ink-soft disabled:opacity-60"
             >
               {isSelected ? `Re-select ${provider.name}` : `Select ${provider.name}`}
             </button>
 
             {refusal && (
-              <p id={errorId} className="mt-2 flex gap-2 text-sm font-medium text-red-800">
+              <p id={errorId} className="mt-2 flex gap-2 text-sm font-medium text-spot-deep">
                 {/* Text marker, so the refusal does not depend on the red. */}
                 <span aria-hidden="true">✕</span>
                 <span>Cannot select: {refusal}</span>

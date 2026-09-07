@@ -35,14 +35,14 @@ export function SearchForm() {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <label htmlFor="specialty" className="font-semibold text-slate-900">
+        <label htmlFor="specialty" className="font-semibold text-ink">
           Specialty
         </label>
         <select
           id="specialty"
           value={specialty}
           onChange={(e) => setSpecialty(e.target.value as Specialty)}
-          className="rounded border border-slate-400 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900"
+          className="rounded border-[1.5px] border-ink px-3 py-2"
         >
           {SPECIALTY.options.map((option) => (
             <option key={option} value={option}>
@@ -53,14 +53,14 @@ export function SearchForm() {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="insurance" className="font-semibold text-slate-900">
+        <label htmlFor="insurance" className="font-semibold text-ink">
           Insurance plan
         </label>
         <select
           id="insurance"
           value={insurance}
           onChange={(e) => setInsurance(e.target.value)}
-          className="rounded border border-slate-400 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900"
+          className="rounded border-[1.5px] border-ink px-3 py-2"
         >
           <option value="">Any plan</option>
           {INSURANCE_PLANS.map((plan) => (
@@ -71,8 +71,8 @@ export function SearchForm() {
         </select>
       </div>
 
-      <fieldset className="rounded border border-slate-300 p-3">
-        <legend className="px-1 font-semibold text-slate-900">Required accommodations</legend>
+      <fieldset className="rounded border-[1.5px] border-ink p-3">
+        <legend className="px-1 font-semibold text-ink">Required accommodations</legend>
         <ul className="mt-1 grid gap-2 sm:grid-cols-2">
           {ACCOMMODATION.options.map((id) => (
             <li key={id} className="flex items-center gap-2">
@@ -85,9 +85,9 @@ export function SearchForm() {
                     e.target.checked ? [...prev, id] : prev.filter((a) => a !== id),
                   )
                 }
-                className="size-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900"
+                className="size-4"
               />
-              <label htmlFor={`search-acc-${id}`} className="text-slate-800">
+              <label htmlFor={`search-acc-${id}`} className="text-ink">
                 <span aria-hidden="true">{ACCOMMODATION_ICONS[id]} </span>
                 {ACCOMMODATION_LABELS[id]}
               </label>
@@ -100,11 +100,11 @@ export function SearchForm() {
         <button
           type="submit"
           disabled={busy}
-          className="rounded bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+          className="rounded bg-ink px-4 py-2 font-semibold text-stock hover:bg-ink-soft disabled:opacity-60"
         >
           Find providers
         </button>
-        <p role="status" aria-live="polite" className="text-sm text-slate-800">
+        <p role="status" aria-live="polite" className="text-sm text-ink">
           {message}
         </p>
       </div>

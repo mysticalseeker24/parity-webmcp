@@ -56,12 +56,12 @@ export function AuditTrail() {
           type="button"
           onClick={() => performUndo()}
           disabled={!undoTop}
-          className="rounded border border-slate-500 px-3 py-1.5 font-semibold text-slate-900 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded border-[1.5px] border-ink px-3 py-1.5 font-semibold text-ink hover:bg-stock-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           {undoTop ? undoTop.label : "Nothing to undo"}
           <kbd className="ml-2 font-mono text-xs">Ctrl Z</kbd>
         </button>
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-ink">
           Confirming a booking cannot be undone here — it commits a real appointment, so reversing
           it is its own approved action rather than a shortcut around the approval.
         </p>
@@ -72,10 +72,10 @@ export function AuditTrail() {
           {approvals.map((grant) => (
             <li
               key={grant.id}
-              className={`rounded border p-2 ${
+              className={`rounded border-[1.5px] p-2 ${
                 grant.evidence?.flag
-                  ? "border-amber-700 bg-amber-50 text-amber-900"
-                  : "border-slate-300 bg-white text-slate-800"
+                  ? "border-spot-deep bg-stock-deep text-ink"
+                  : "border-ink bg-stock text-ink"
               }`}
             >
               <span className="font-semibold">{grant.tool}</span> approved{" "}
@@ -97,7 +97,7 @@ export function AuditTrail() {
       )}
 
       {entries.length === 0 ? (
-        <p className="text-sm text-slate-600">No tool has run yet.</p>
+        <p className="text-sm text-ink-soft">No tool has run yet.</p>
       ) : (
         <ol aria-label="Activity, newest first" className="flex flex-col gap-1" data-testid="audit-trail">
           {entries.map((entry) => {
@@ -105,7 +105,7 @@ export function AuditTrail() {
             return (
               <li
                 key={entry.id}
-                className="rounded border border-slate-300 bg-white p-2 text-sm text-slate-800"
+                className="rounded border-[1.5px] border-ink bg-stock p-2 text-sm text-ink"
               >
                 <span className="font-semibold">{ACTOR_LABELS[entry.actor]}</span>
                 {" · "}
@@ -113,7 +113,7 @@ export function AuditTrail() {
                 {" · "}
                 <span>{summarise(entry)}</span>
                 {" · "}
-                <time dateTime={new Date(entry.at).toISOString()} className="text-slate-600">
+                <time dateTime={new Date(entry.at).toISOString()} className="text-ink-soft">
                   {clockTime(entry.at)}
                 </time>
               </li>

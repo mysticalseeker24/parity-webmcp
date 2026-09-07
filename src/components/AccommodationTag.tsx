@@ -10,7 +10,7 @@ import {
  */
 export function AccommodationTag({ id }: { id: Accommodation }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-sm text-slate-800">
+    <span className="inline-flex items-center gap-1 rounded border-[1.5px] border-ink bg-stock px-2 py-0.5 text-sm text-ink">
       <span aria-hidden="true">{ACCOMMODATION_ICONS[id]}</span>
       {ACCOMMODATION_LABELS[id]}
     </span>

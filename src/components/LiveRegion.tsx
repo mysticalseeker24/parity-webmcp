@@ -64,11 +64,11 @@ export function AnnouncementLog() {
   }, []);
 
   if (lines.length === 0) {
-    return <p className="text-sm text-slate-600">Nothing has happened yet.</p>;
+    return <p className="text-sm text-ink-soft">Nothing has happened yet.</p>;
   }
 
   return (
-    <ol className="flex flex-col gap-1 text-sm text-slate-800" data-testid="announcement-log">
+    <ol className="flex flex-col gap-1 text-sm text-ink" data-testid="announcement-log">
       {lines.map((line, index) => (
         <li key={`${index}-${line}`}>{line}</li>
       ))}
