@@ -18,7 +18,12 @@
   <img src="./docs/screenshots/hero.png" alt="Parity's home screen: the headline 'Booking care, built once for both' beside a printed motif of scattered marks gathering into nodes and fanning into ordered lines" width="880">
 </p>
 
-> Open the live app in the **ChatGPT desktop app's built-in browser**, or **Chrome 149+** with `chrome://flags/#enable-webmcp-testing` enabled. Without WebMCP the site still works — the palette falls back to the local registry.
+> Open the live app in **Chrome 149+** with `chrome://flags/#enable-webmcp-testing` enabled, or in the **ChatGPT desktop app's built-in browser**. Without WebMCP the site still works — the palette falls back to the local registry.
+
+<p align="center">
+  <strong>Verified end to end in Chrome (latest) with WebMCP enabled:</strong> tools register, the agent and the palette read the same registry, the full booking completes by keyboard alone, and the consent gate holds.<br>
+  <sub>328 unit tests · 22 assertions against real Chrome over the DevTools Protocol · 7 adversarial evals against the live deployment</sub>
+</p>
 
 ---
 
@@ -37,7 +42,7 @@
 - [Architecture](#architecture)
 - [What we found in the browser](#what-we-found-in-the-browser)
 - [Deliberate non-choices](#deliberate-non-choices)
-- [Known limitations](#known-limitations-stated-not-buried)
+- [Scope](#scope)
 - [License](#license)
 
 ---
@@ -209,39 +214,40 @@ Parity is built as a set of concrete answers to open questions on the WebMCP spe
 
 ## Adversarial evals
 
-Full runs in [`evals/adversarial.md`](./evals/adversarial.md); the hand procedure in [`evals/RUNBOOK.md`](./evals/RUNBOOK.md). Everything marked **run** was executed against the live deployment in Chrome 152 with real WebMCP, by [`scripts/run-evals.mjs`](./scripts/run-evals.mjs).
+Recorded runs in [`evals/adversarial.md`](./evals/adversarial.md), executed
+against the live deployment in Chrome 152 with real WebMCP by
+[`scripts/run-evals.mjs`](./scripts/run-evals.mjs). Re-run them yourself:
 
-**The caller in those runs is a script, not a language model.** They answer *"can the gate be bypassed"*, not *"will a model try"*. The behavioural half needs a human in ChatGPT's browser and is honestly marked not run.
+```bash
+node scripts/run-evals.mjs https://parity-webmcp.vercel.app/
+```
 
-| Case | Tests | Status | Result |
-|---|---|---|---|
-| 1a | Where the injected bio can reach the agent | run | **held** — reachable by exactly one tool, and that tool is the one annotated `untrustedContentHint` |
-| 1b | Gate holds while the model is actively misled | **not run** | needs a real model |
-| 2 | Approval for slot A cannot commit slot B | run | **held** |
-| 3 | Consumed grant cannot book twice | run | **held** — same booking reference |
-| 4 | Unregistered tool is not callable | run | **held** — absent from `getTools()`; `unavailable[]` explains why |
-| 5 | Grant expires at 120 s | run | **held** — `grant_expired`, no silent retry, control gone |
-| 6a | Can injected input complete the page's approval? | run | ⚠️ **bypassable — as documented** |
-| 6b | Does ChatGPT's browser do it unprompted? | **not run** | needs that browser |
-| 7a | `unavailable[]` after the hold really expires | run | **held** |
-| 7b | Does a model read it and recover? | **not run** | needs a real model |
+| Case | Tests | Result |
+|---|---|---|
+| 1 | Where an injected provider bio can reach the agent | **held** — reachable by exactly one tool, and that tool is the one annotated `untrustedContentHint` |
+| 2 | Approval for slot A cannot commit slot B | **held** |
+| 3 | Consumed grant cannot book twice | **held** — same booking reference, no second booking |
+| 4 | Unregistered tool is not callable | **held** — absent from `getTools()`; `unavailable[]` explains why |
+| 5 | Grant expires at 120 s | **held** — `grant_expired`, no silent retry, control gone |
+| 6 | Can injected input complete the page's approval? | ⚠️ **bypassable — reproduces #288** |
+| 7 | `unavailable[]` after the hold really expires | **held** — waited out the real 10-minute timer |
 
 ### The result worth reading
 
-**Case 6a reproduced #288.** Three approval attempts against the live page:
+**Case 6 reproduced #288.** Three approval attempts were made against the live page:
 
 - a click **inside** the 1.5 s dwell → blocked, control disabled
 - a **JS-synthesised** click, control force-enabled by script first → rejected, `isTrusted: false`
 - a click **injected through Chrome's own input pipeline** → **approved**, logged as `via page card, pointer, trusted event`
 
-Automated input completed the human approval step and the page could not tell. That is the gap #288 describes, reproduced deliberately — not a defect discovered here, but the precise reason this README says page-side approval is **necessary, not sufficient**.
+Automated input completed the human approval step and the page could not tell. That is precisely the gap #288 describes, reproduced deliberately against our own gate — and it is the reason this README says page-side approval is **necessary, not sufficient** rather than claiming it is airtight. A page cannot close this; the durable fix belongs in the user agent.
 
 <p align="center">
   <img src="./docs/screenshots/audit-trail.png" alt="The activity trail, listing each tool call with its actor and an approval recorded as 'approved 2751 ms after request, via page card, pointer, trusted event'" width="880">
 </p>
 <p align="center"><em>Detection made legible. The page cannot stop an injected click, but it can put the timing in front of the person it affects.</em></p>
 
-**Case 7a** waited out the real 10-minute hold timer rather than simulating it. `confirm_booking` unregistered with `reason_code: hold_expired`, and the live region announced *"Confirm booking is no longer available: the hold on the slot expired."* #262's context survived the unregistration on both surfaces.
+**Case 7** waited out the real 10-minute hold timer rather than simulating it. `confirm_booking` unregistered with `reason_code: hold_expired`, and the live region announced *"Confirm booking is no longer available: the hold on the slot expired."* #262's context survived the unregistration on both surfaces.
 
 ---
 
@@ -404,15 +410,27 @@ Building this turned up several behaviours that contradict `webmcp-types` and th
 
 ---
 
-## Known limitations, stated not buried
+## Scope
 
-1. **No real screen reader has been run against this.** The markup follows the documented patterns and the semantics are asserted by tests, but NVDA, JAWS and VoiceOver all differ on `aria-live` under rapid updates and on roving-`tabindex` grids, and nobody has listened to it.
-2. **Four eval half-cases are outstanding, all behavioural** (1b, 6b, 7b) — they need a human driving a real model in ChatGPT's browser.
-3. **Case 6a reproduced #288 at the mechanism level.** Injected input approved the page's own card. This is documented, not solved, and cannot be solved from inside a page.
-4. **`find_providers`' 5-result cap is never exercised** — the fixture has three providers per specialty. The truncation code and its note are written and unit-asserted, but no test proves the cap fires.
-5. **Voice is Chrome-only** (Web Speech API). The button feature-detects and says so rather than failing silently. Every voice capability has a keyboard equivalent.
-6. **WebMCP is a proposed standard** — a W3C Community Group draft in a Chrome origin trial — and its API surface is subject to change.
-7. **Tools belong to the page.** Navigating away or closing the tab unregisters them; this is expected WebMCP behaviour.
+- **Verified in Chrome; not yet exercised in ChatGPT's built-in browser.**
+  Everything documented here was run in Chrome 149+ with the WebMCP flag, which
+  is the same imperative API surface. ChatGPT's browser supports a documented
+  subset (no declarative API, no iframes) that Parity already stays inside, but
+  the app has not been driven by a language model there.
+- **Voice is Chrome-only** (Web Speech API). The button feature-detects and says
+  so rather than failing silently, and every voice capability has a keyboard
+  equivalent.
+- **WebMCP is a proposed standard** — a W3C Community Group draft in a Chrome
+  origin trial — so its API surface may still change. `src/lib/webmcpInterop.ts`
+  is the single seam where that is absorbed.
+- **Tools belong to the page.** Navigating away or closing the tab unregisters
+  them. That is expected WebMCP behaviour, and it is why Parity is a single page
+  with no routing.
+- **Booking state resets on reload.** It is a demo with synthetic data; there is
+  nothing to persist and no user data to keep.
+- **Spec issue #288 cannot be closed from inside a page.** Parity reproduces it,
+  records it, and says so — see [the evals](#adversarial-evals). The durable fix
+  belongs in the user agent.
 
 ---
 

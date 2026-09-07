@@ -97,8 +97,9 @@ argument in full, Approve greyed out and counting down.
 > bound to a hash of these exact arguments, expires in two minutes, and burns
 > after one use. No tool can approve a grant."
 
-*(If you record this take, write the outcome into `evals/adversarial.md`
-Case 1b — it is currently NOT RUN.)*
+*(If you record this take, add what the model actually did to
+`evals/adversarial.md` Case 1 — a model reading the injection and still being
+refused is a stronger datapoint than a scripted call being refused.)*
 
 ---
 

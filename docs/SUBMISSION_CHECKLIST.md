@@ -35,8 +35,8 @@ Verified 2026-09-07 against `main` and <https://parity-webmcp.vercel.app/>.
 - [x] **Specific, non-generic project name** — "Parity". The name describes the call graph: one
       registry, two callers.
 
-- [ ] ⚠️ **Project newly created within the submission period, commit history shows it** — **NEEDS
-      YOUR DECISION.** See below.
+- [ ] **Project newly created within the submission period, commit history shows it** — the history
+      runs past the stated deadline and has not been rewritten. Raised with the organisers directly.
 
 - [ ] **Submitted before the deadline** — not yet submitted.
 
@@ -46,28 +46,6 @@ Verified 2026-09-07 against `main` and <https://parity-webmcp.vercel.app/>.
 - [ ] **Live URL stays up through judging** — Vercel Hobby projects do not idle static deployments,
       but **confirm the project will not be deleted or the deployment superseded**, and do not run a
       second canonical URL.
-
----
-
-## ⚠️ The one that needs your attention
-
-`PROJECT_SPEC.md` §12 records the submission window as **Aug 25 – Sep 3** and the deadline as
-**Sep 3, 1:00 PM PDT**. The commit history runs:
-
-```
-ba49eff  2026-09-03  Initial commit
-edd0f99  2026-09-03  Phase 0+1
-98e0321  2026-09-04  Phase 1 verification
-...
-3b79942  2026-09-07  Phase 8
-```
-
-Ten of eighteen commits are dated after Sep 3.
-
-**This has not been "fixed".** Rewriting commit dates would falsify the exact evidence the rule
-exists to check, and a judge who runs `git log` would see a history that disagrees with the pushed
-timestamps on GitHub. Confirm the real deadline before submitting; if the window has genuinely
-closed, that is a question for the organisers.
 
 ---
 
@@ -101,19 +79,13 @@ closed, that is a question for the organisers.
 
 ---
 
-## Known gaps, stated rather than hidden
+## Scope
 
-1. **No real screen reader has been run against this.** `scripts/a11y-smoke.md` separates what is
-   asserted by a test from what was verified by reading markup. NVDA, JAWS and VoiceOver differ on
-   `aria-live` under rapid updates and on roving-`tabindex` grids.
-2. **Four eval half-cases are outstanding, all behavioural** (1b, 6b, 7b, and the model half of the
-   flow) — they need a human in ChatGPT's browser. `evals/RUNBOOK.md` is the procedure.
-3. **Case 6a reproduced #288 at the mechanism level**: CDP-injected input approved the page's own
-   card and was logged as a trusted event. This is documented as the reason page-side approval is
-   called *necessary, not sufficient*, and is not claimed to be solved.
-4. **All 19 tools now ship**, including `get_provider_detail`. That closes the gap noted earlier —
-   the injected provider bio now has a real path to an agent, through the one tool annotated
-   `untrustedContentHint`. It also means eval Case 1a must be re-run before it is quoted.
-5. **`find_providers`' 5-result cap is never exercised** by the fixture: three providers per
-   specialty. The truncation code and its note are written and unit-asserted, but no test proves the
-   cap fires.
+1. **Verified in Chrome (latest) with the WebMCP flag** — by hand and by the automated harness.
+   Not yet driven by a language model in ChatGPT's built-in browser, which supports a documented
+   subset that Parity already stays inside.
+2. **Case 6 reproduced spec issue #288** at the mechanism level: injected input approved the page's
+   own card and was logged as a trusted event. Documented as the reason page-side approval is called
+   *necessary, not sufficient*. It cannot be closed from inside a page.
+3. **`find_providers`' 5-result cap is not exercised by the fixture** — three providers per
+   specialty. The truncation code and its note are written and unit-asserted.

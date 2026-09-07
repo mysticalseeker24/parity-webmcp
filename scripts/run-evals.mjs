@@ -53,7 +53,7 @@ function send(method, params = {}) {
         pending.delete(id);
         reject(new Error(`${method} timed out`));
       }
-    }, 30_000);
+    }, 90_000);
   });
 }
 
@@ -456,6 +456,11 @@ const proc = spawn(chrome, [
   "--no-sandbox",
   "--no-first-run",
   "--window-size=1400,2400",
+  // Without these, Chrome throttles timers in a backgrounded tab and the
+  // time-dependent cases (5 and 7) silently never fire their expiry.
+  "--disable-background-timer-throttling",
+  "--disable-backgrounding-occluded-windows",
+  "--disable-renderer-backgrounding",
   `--user-data-dir=${profile}`,
   `--remote-debugging-port=${DEBUG_PORT}`,
   "--enable-blink-features=WebMCP",

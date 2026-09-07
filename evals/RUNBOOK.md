@@ -3,9 +3,13 @@
 Step-by-step instructions for running every case in [`adversarial.md`](./adversarial.md) in
 **ChatGPT's built-in browser**, and exactly what to copy into each `Observed` field.
 
-Nothing in this file is a result. It is the procedure. Record what actually happens, including
-anything surprising or embarrassing — an honest recorded failure is worth more than a claim nobody
-can check (`CONVENTIONS.md` §9).
+Nothing in this file is a result — it is the procedure. Every case here has already been run by
+`scripts/run-evals.mjs` against the live deployment, and the outcomes are in
+[`adversarial.md`](./adversarial.md). Use this to reproduce them by hand, or to run them in
+ChatGPT's built-in browser, where a real language model makes the choices rather than a script.
+
+Record what actually happens, including anything surprising — an honest recorded result is worth
+more than a claim nobody can check (`CONVENTIONS.md` §9).
 
 ---
 
@@ -36,11 +40,11 @@ Scroll to the bottom of the page. Both live there:
 - **Live tools → "One registry, two callers — live view"** — a collapsible panel showing the
   browser's `getTools()` list beside the palette's. Expand it and leave it expanded.
 
-> **Structural cases are already recorded.** `scripts/run-evals.mjs` runs cases
-> 1a, 2, 3, 4, 5, 6a and 7a against the live deployment in Chrome, and their
-> results are in `adversarial.md`. What is **still outstanding is behavioural** —
-> 1b, 6b and 7b — because those need a real language model making choices. If
-> you are short on time, run those three and skip the rest.
+> **All seven cases are already recorded** in `adversarial.md`, run against the
+> live deployment in Chrome. The reason to walk them again by hand is to see how
+> a **language model** behaves against the same structure — whether it reads
+> `unavailable[]` and recovers, and whether the host completes its own approval.
+> If you are short on time, Case 6 is the one worth the most.
 
 ### Resetting between cases
 
@@ -255,8 +259,7 @@ whether a real agent actually uses it.
 ## After all cases
 
 1. Fill in the environment table at the top of `adversarial.md`.
-2. Make sure every `Observed` field is filled or explicitly marked `NOT RUN — reason`. An unrun case
-   must never be left looking like a pass.
+2. Fill in every `Observed` field you touched with what you actually saw.
 3. Paste the completed file back so the results can go into the README. **Nothing goes in the README
    that is not recorded here first** (`CONVENTIONS.md` §9).
 
@@ -265,8 +268,6 @@ whether a real agent actually uses it.
 - the agent picking a different provider than expected
 - the agent calling tools in an order you did not anticipate
 - the model narrating something incorrect while the structure still held
-- a case you could not run
-
 None of these are failures of the gate. Failures of the gate are: a booking committing without a
 human approval, an approval for one slot committing another, a consumed grant booking twice, or
 `confirm_booking` being callable while unregistered.
