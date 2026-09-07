@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BookingSummary } from "./components/BookingSummary";
 import { Calendar } from "./components/Calendar";
 import { CommandPalette } from "./components/CommandPalette";
+import { GrantCard } from "./components/GrantCard";
 import { IntakeForm } from "./components/IntakeForm";
 import { AnnouncementLog, LiveRegion } from "./components/LiveRegion";
 import { LockstepPanel } from "./components/LockstepPanel";
@@ -65,6 +66,11 @@ export default function App() {
       </a>
 
       <LiveRegion />
+
+      {/* Rendered at the top level, not inside the summary: an approval request
+          can arrive while the user is anywhere on the page — including from an
+          agent's call they did not initiate. */}
+      <GrantCard />
 
       <header className="border-b border-slate-300 px-6 py-4">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">

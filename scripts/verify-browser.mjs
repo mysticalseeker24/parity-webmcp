@@ -126,6 +126,16 @@ async function cdp(expression) {
 }
 
 const PROBE = `(async () => { try {
+  function listMembers(obj) {
+    var names = [];
+    var proto = Object.getPrototypeOf(obj);
+    if (proto) names = Object.getOwnPropertyNames(proto);
+    var out = [];
+    for (var i = 0; i < names.length; i++) {
+      if (names[i] !== "constructor") out.push(names[i]);
+    }
+    return out.sort();
+  }
   // Give the app's registration effect a moment to settle.
   // Wait for the detection effect to have committed, not merely for the app to
   // have rendered — the badge says "checking" for the first paint.
@@ -141,6 +151,10 @@ const PROBE = `(async () => { try {
     hasDocumentModelContext: typeof mc === "object" && mc !== null,
     hasNavigatorModelContext: typeof navigator.modelContext !== "undefined",
     executeToolExists: typeof mc?.executeTool === "function",
+    // Spec issue #165. Either answer is a valid observation, so this is
+    // reported rather than asserted — never assumed (TOOLS.md §3).
+    requestUserInteractionExists: typeof mc?.requestUserInteraction === "function",
+    modelContextKeys: mc ? listMembers(mc) : [],
     verdictText: document.querySelector('[data-testid="detection"]')?.textContent ?? "",
     listingText: document.querySelector('[data-testid="registry-listing"]')?.textContent ?? "",
   };
@@ -263,6 +277,11 @@ try {
   check("document.modelContext is present", r.hasDocumentModelContext);
   check("navigator.modelContext is absent (TOOLS.md §2)", !r.hasNavigatorModelContext);
   check("executeTool() exists on ModelContext", r.executeToolExists);
+  console.log(
+    `  info  requestUserInteraction (#165): ${
+      r.requestUserInteractionExists ? "PRESENT" : "absent"
+    } — ModelContext exposes: ${r.modelContextKeys.join(", ")}`,
+  );
 
   console.log("\nRegistration");
   check(
