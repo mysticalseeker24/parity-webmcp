@@ -146,6 +146,74 @@ export function startRegistry(
   }
 
   /**
+   * Re-registration is deferred while any tool is executing.
+   *
+   * Spec issue #288 aside, this is issue #300, and this registry's shape is
+   * exactly the one it describes: a state-changing tool mutates the store
+   * inside its own `execute`, the subscription fires synchronously, and
+   * `sync()` aborts that tool's own signal while it is still running.
+   *
+   * Observed in Chrome 152 against the deployed build: `confirm_booking`
+   * rejected the caller with "The operation failed for an unknown transient
+   * reason (e.g. out of memory)" *after* the appointment had been committed —
+   * so an agent is told the booking failed while the patient has one, and its
+   * natural next move is to retry. `release_slot` behaves the same way.
+   *
+   * Holding the re-sync until nothing is in flight keeps the guarantee the
+   * state machine is built on (a tool that is not legal is not registered)
+   * while letting a tool finish delivering the result it already produced.
+   */
+  const executing = new Map<string, number>();
+  let deferredState: BookingState | null = null;
+  let flushQueued = false;
+
+  function beginExecution(name: string): void {
+    executing.set(name, (executing.get(name) ?? 0) + 1);
+  }
+
+  function endExecution(name: string): void {
+    const n = (executing.get(name) ?? 1) - 1;
+    if (n > 0) executing.set(name, n);
+    else executing.delete(name);
+  }
+
+  /**
+   * Only a sync that would unregister a tool *while that tool is running* is
+   * dangerous. Everything else re-registers immediately, so the live set stays
+   * as prompt as it ever was and the state machine keeps its guarantee.
+   */
+  function wouldCutRunningTool(live: readonly AnyDefinedTool[]): boolean {
+    if (executing.size === 0) return false;
+    const liveNames = new Set(live.map((t) => t.name));
+    for (const name of executing.keys()) if (!liveNames.has(name)) return true;
+    return false;
+  }
+
+  /**
+   * Deferred to a fresh task, not just to the end of the promise chain.
+   *
+   * Settling in `.finally()` is still inside the call the browser is awaiting:
+   * aborting there rejected the caller anyway. The re-sync has to land after
+   * the browser has delivered the result, so it is queued as a macrotask.
+   *
+   * The cost is a single tick during which a tool that has just become illegal
+   * is still registered. Every consequential tool is independently guarded —
+   * a grant is consumed once, a hold cannot be taken twice — so the state
+   * machine remains the design, not the only defence.
+   */
+  function flushDeferredSync(): void {
+    if (executing.size > 0 || deferredState === null || flushQueued) return;
+    flushQueued = true;
+    setTimeout(() => {
+      flushQueued = false;
+      if (executing.size > 0 || deferredState === null) return;
+      const state = deferredState;
+      deferredState = null;
+      sync(state);
+    }, 0);
+  }
+
+  /**
    * Every execution passes through here, whoever called it, so the undo stack
    * cannot miss an action — including one the agent took. The inverse is
    * captured before the call and committed only if the call succeeded: a
@@ -156,10 +224,16 @@ export function startRegistry(
     run: () => Promise<T>,
   ): Promise<T> {
     const commit = captureInverse(tool.name, store);
-    return run().then((result) => {
-      if (commit && result.ok) commit();
-      return result;
-    });
+    beginExecution(tool.name);
+    return run()
+      .then((result) => {
+        if (commit && result.ok) commit();
+        return result;
+      })
+      .finally(() => {
+        endExecution(tool.name);
+        flushDeferredSync();
+      });
   }
 
   function register(tool: AnyDefinedTool): void {
@@ -192,6 +266,13 @@ export function startRegistry(
 
   function sync(state: BookingState): void {
     const live = tools.filter((tool) => tool.available(state));
+
+    // See flushDeferredSync: cutting a tool mid-execute makes the browser
+    // reject a call that actually succeeded (#300).
+    if (wouldCutRunningTool(live)) {
+      deferredState = state;
+      return;
+    }
 
     if (import.meta.env.DEV && live.length > MAX_LIVE_TOOLS) {
       throw new Error(

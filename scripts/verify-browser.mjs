@@ -625,6 +625,58 @@ try {
     JSON.stringify(access.panelText),
   );
 
+  // Spec issue #300, reproduced here and fixed. A tool that mutates state
+  // inside its own execute triggers the store subscription, which re-syncs the
+  // registry and aborts that tool's own signal while it is still running.
+  // Chrome 152 then rejects the caller with "The operation failed for an
+  // unknown transient reason" even though the tool succeeded and its side
+  // effects landed — an agent is told the action failed when it did not.
+  console.log("\nSelf-unregistering tools still deliver their result (#300)");
+  const selfUnreg = await cdp(`(async () => {
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const mc = document.modelContext;
+    const call = async (n, a) => {
+      const t = (await mc.getTools()).find((x) => x.name === n);
+      if (!t) return { MISSING: n };
+      try {
+        const r = await mc.executeTool(t, JSON.stringify(a));
+        return { resolved: true, value: typeof r === "string" ? JSON.parse(r) : r };
+      } catch (e) { return { resolved: false, error: String((e && e.message) || e) }; }
+    };
+
+    await call("find_providers", { specialty: "neurology" });
+    await call("select_provider", { provider_id: "p01" });
+    await settle(700);
+    const avail = await call("get_availability", {});
+    const slot = avail.value?.data?.slots?.[0]?.id;
+    if (!slot) return { error: "no slot to hold" };
+    const held = await call("hold_slot", { slot_id: slot });
+    await settle(400);
+
+    // release_slot leaves the live set the moment it succeeds.
+    const rel = await call("release_slot", {});
+    await settle(500);
+    const st = await call("get_booking_state", {});
+    const live = (await mc.getTools()).map((t) => t.name);
+    return {
+      held: held.resolved === true,
+      released: { resolved: rel.resolved === true, error: rel.error ?? null },
+      stage: st.value?.data?.stage ?? null,
+      gone: !live.includes("release_slot"),
+    };
+  })()`);
+
+  check(
+    "a tool that unregisters itself still resolves its caller",
+    selfUnreg.released?.resolved === true,
+    JSON.stringify(selfUnreg.released ?? selfUnreg.error),
+  );
+  check(
+    "its side effect landed, and it did leave the live set",
+    selfUnreg.stage === "provider_selected" && selfUnreg.gone === true,
+    JSON.stringify({ stage: selfUnreg.stage, gone: selfUnreg.gone }),
+  );
+
   check(
     "no tool invocation threw and no page error fired",
     Object.keys(r.errors ?? {}).length === 0 && (r.pageErrors ?? []).length === 0,

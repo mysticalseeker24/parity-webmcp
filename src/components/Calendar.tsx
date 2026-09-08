@@ -56,6 +56,7 @@ export function Calendar() {
   const takenSlotIds = useBookingStore((s) => s.takenSlotIds);
   const companion = useBookingStore((s) => s.companion);
   const transport = useBookingStore((s) => s.transport);
+  const liveTools = useBookingStore((s) => s.liveTools);
   const [cursor, setCursor] = useState<Cursor>({ row: 0, col: 0 });
   const [message, setMessage] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -92,15 +93,30 @@ export function Calendar() {
    * looking at the grid belongs in the audit trail exactly as the agent's call
    * does. Same tool, same path, one entry per provider.
    */
-  // Availability is re-read whenever the provider or an access constraint
-  // changes. Without the constraints in the key, setting a paratransit window
-  // left the previously fetched slots on screen unfiltered — the tool had
-  // taken effect but the grid still offered times it had just excluded.
-  const fetchKey = providerId ? `${providerId}|${JSON.stringify(companion)}|${JSON.stringify(transport)}` : null;
+  // Re-read whenever the provider or an access constraint changes. Without the
+  // constraints in the key, setting a paratransit window left the previously
+  // fetched slots on screen unfiltered — the tool had taken effect but the grid
+  // still offered times it had just excluded.
+  //
+  // Gated on the tool actually being live. Re-registration is deferred while a
+  // tool is executing (#300), so selecting a provider re-renders this component
+  // before get_availability has been registered; asking then returned
+  // `unavailable`, and the one-shot guard below made that transient miss
+  // permanent — the grid stayed unclickable for the rest of the session.
+  // Keying on liveTools means the request is retried the moment it can succeed.
+  const canFetch = liveTools.includes("get_availability");
+  const fetchKey =
+    providerId && canFetch
+      ? `${providerId}|${JSON.stringify(companion)}|${JSON.stringify(transport)}`
+      : null;
   useEffect(() => {
     if (!fetchKey || fetchedFor.current === fetchKey) return;
     fetchedFor.current = fetchKey;
-    void executeAsHuman("get_availability", {});
+    void executeAsHuman("get_availability", {}).then((result) => {
+      // Belt and braces: release the guard on refusal so a later render can ask
+      // again rather than leaving the grid permanently stale.
+      if (!result.ok) fetchedFor.current = null;
+    });
   }, [fetchKey]);
 
   /** Park the cursor on a real slot so the first Tab lands somewhere useful. */

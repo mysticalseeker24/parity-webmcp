@@ -109,6 +109,11 @@ describe("the whole booking, keyboard only", () => {
 
     // --- 3. Hold a slot from the grid using arrows and Enter.
     const grid = await screen.findByRole("table");
+    // The grid renders from the fixture, so it appears before get_availability
+    // has finished registering hold_slot. Re-registration is deferred until no
+    // tool is executing (#300), so wait for the condition rather than assume
+    // the tool arrived within the same tick.
+    await waitFor(() => expect(store().liveTools).toContain("hold_slot"));
     const firstCell = within(grid).getAllByRole("button")[0]!;
     firstCell.focus();
     await user.keyboard("{ArrowRight}");
