@@ -23,7 +23,7 @@
 
 <p align="center">
   <strong>Verified end to end in Chrome (latest) with WebMCP enabled:</strong> tools register, the agent and the palette read the same registry, the full booking completes by keyboard alone, and the consent gate holds.<br>
-  <sub>385 unit tests · 34 assertions against real Chrome over the DevTools Protocol · 7 adversarial evals against the live deployment</sub>
+  <sub>385 unit tests · 36 assertions against real Chrome over the DevTools Protocol · 7 adversarial evals against the live deployment</sub>
 </p>
 
 ---
@@ -44,6 +44,7 @@
 - [What we found in the browser](#what-we-found-in-the-browser)
 - [Deliberate non-choices](#deliberate-non-choices)
 - [Scope](#scope)
+- [Where this goes next](./docs/FUTURE.md)
 - [License](#license)
 
 ---
@@ -216,6 +217,8 @@ Parity is built as a set of concrete answers to open questions on the WebMCP spe
 | [#165](https://github.com/webmachinelearning/webmcp/issues/165) elicitation | `requestUserInteraction()` is feature-detected every time. **Measured absent in Chrome 152** — see [findings](#what-we-found-in-the-browser). |
 | [#239](https://github.com/webmachinelearning/webmcp/issues/239) grammar-level injection mitigation | Vocabularies are `z.enum`, so the constraint on the agent is structural rather than a sentence asking it to behave. |
 | [#288](https://github.com/webmachinelearning/webmcp/issues/288) agent completes its own approval | Reproduced, recorded, and named as the reason the gate is called *necessary, not sufficient*. |
+| [#300](https://github.com/webmachinelearning/webmcp/issues/300) unregistration must not fail in-flight calls | **Independently reproduced in Chrome 152.** State-driven registration means a tool can unregister *itself* mid-execute; the caller was then rejected with `"The operation failed for an unknown transient reason"` after the action had already succeeded. Re-registration is now deferred whenever a sync would cut a running tool. [Details](#what-we-found-in-the-browser). |
+| [#306](https://github.com/webmachinelearning/webmcp/issues/306) tool namespaces / groups | Every tool already carries a `group`, and the live set is derived from page state rather than accumulated — the page-side answer to tool explosion, offered as a datapoint for the filtering mechanism being debated. |
 
 ---
 
@@ -298,7 +301,7 @@ Open it in Firefox, Safari, or Chrome without the flag. The badge says *not dete
 ### Automated checks
 
 ```bash
-npm run verify          # typecheck + 385 unit tests + build + 34 real-browser checks
+npm run verify          # typecheck + 385 unit tests + build + 36 real-browser checks
 npm run verify:browser  # just the browser pass (needs a build and Chrome 149+)
 npm test                # unit tests only — no browser needed, safe in CI
 node scripts/run-evals.mjs https://parity-webmcp.vercel.app/   # the structural evals
@@ -311,7 +314,7 @@ node scripts/screenshots.mjs http://localhost:4321/            # regenerate docs
 
 ## Accessibility
 
-This is an accessibility product, so an accessibility defect here is self-refuting. [`scripts/a11y-smoke.md`](./scripts/a11y-smoke.md) records what was actually checked and **how** — separating what a test asserts from what was verified by reading markup, and stating what has not been checked at all.
+Parity targets **WCAG 2.2 Level AA**, and [`docs/FUTURE.md`](./docs/FUTURE.md#3-accessibility-what-is-conformed-to-and-what-is-still-owed) lists the conformance criterion by criterion — including the ones still owed, and the fact that **no screen reader has been run against this build.** This is an accessibility product, so an accessibility defect here is self-refuting. [`scripts/a11y-smoke.md`](./scripts/a11y-smoke.md) records what was actually checked and **how** — separating what a test asserts from what was verified by reading markup, and stating what has not been checked at all.
 
 Highlights, each backed by a test:
 
@@ -384,7 +387,7 @@ Then open the dev URL in a WebMCP browser (see [above](#1-open-it-where-an-agent
 | `src/lib/undo.ts` | Inverse snapshots for reversible tools. Gated tools are never undoable. |
 | `src/lib/webmcpInterop.ts` | The seam between what `webmcp-types` promises and what Chrome does. |
 | `src/data/` | Synthetic fixtures: 16 providers, deterministic slots, coverage rules as data. |
-| `scripts/verify-browser.mjs` | 34 assertions against real Chrome over CDP, including that every surface mirrors a tool call made from any other. |
+| `scripts/verify-browser.mjs` | 36 assertions against real Chrome over CDP, including that every surface mirrors a tool call made from any other. |
 | `scripts/run-evals.mjs` | The structural adversarial evals. |
 
 **Stack.** Vite 8 · React 19 · TypeScript strict · Zod 4 (`z.toJSONSchema`) · Tailwind 4 · Zustand · `webmcp-types` · Web Speech API · Vitest · deployed on Vercel.
@@ -406,6 +409,7 @@ Building this turned up several behaviours that contradict `webmcp-types` and th
 | **`execute` is called with ONE argument** — no options, no `signal` | `({ id }, { signal }) =>` throws on the destructure *before the tool body runs*; the browser then reports every tool as failed with nothing in the console. The most expensive finding here. |
 | **`requestUserInteraction()` does not exist in Chrome 152** | The complete `ModelContext` surface is `executeTool, getTools, ontoolchange, registerTool`. It is the right home for approval (#165), and its absence is why the page card is the only channel. |
 | `annotations` come back **defaulted**, not echoed | Do not assert deep equality against what you registered |
+| **A tool that unregisters itself mid-execute rejects its caller, after succeeding** | Chrome 152 rejects with `"The operation failed for an unknown transient reason (e.g. out of memory)"` while the action has already landed. This is unavoidable for any registry that derives its live set from page state, since a state-changing tool routinely removes itself. An agent told the booking failed will retry. Independently reproduced against [#300](https://github.com/webmachinelearning/webmcp/issues/300) and mitigated by deferring re-registration past any running tool. |
 
 ---
 
