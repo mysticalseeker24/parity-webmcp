@@ -29,12 +29,16 @@ Difficulty here is not an opinion. It is the import graph:
 | [`lib/defineTool.ts`](../src/lib/defineTool.ts) | 276 | `zod`, `BookingState`, `result` | Moderate — needs the state type genericised |
 | [`lib/registry.ts`](../src/lib/registry.ts) | 346 | store, `defineTool`, `result`, `undo`, `webmcpInterop` | Hard — needs the store abstracted |
 | [`lib/announcer.ts`](../src/lib/announcer.ts) | 128 | store, registry, `reasons`, `stageFocus`, `result` | Hardest — most app-coupled despite being the smallest idea |
+| [`lib/grants.ts`](../src/lib/grants.ts) | 329 | **none** | Easy — and explicitly requested upstream |
+| [`lib/webmcpInterop.ts`](../src/lib/webmcpInterop.ts) | 62 | **none** | Trivial — too small to stand alone |
 
 Two things fall out of that table, and both are inconvenient for the version of this plan written from memory:
 
 **The announcer is the most valuable idea and the hardest extraction.** It is the piece nothing else in the ecosystem has, and it is the one most tangled in Parity's store, its reason codes, and its stage vocabulary. It is last, not first.
 
 **`result` is nearly free.** Seventy-four lines, zero imports, and it answers an open spec issue ([#282](https://github.com/webmachinelearning/webmcp/issues/282)). It can be lifted in an afternoon.
+
+**The consent gate was under-weighted here originally.** `grants.ts` is the largest module in the list and has *zero* app-coupled imports — it deals in canonical JSON, hashes, TTLs and evidence, and knows nothing about bookings. It is also the only one someone upstream has asked for by name: on [#298](https://github.com/webmachinelearning/webmcp/issues/298) `@minjikim89` wrote *"that is a genuinely nice mechanism and I had not considered hashing the grant over the canonical arguments … If you write it up separately I would be glad to reference it."* An explicit request from a spec contributor is the closest thing to a second consumer that exists today.
 
 ---
 
@@ -69,7 +73,7 @@ Zustand satisfies that shape already; so does a hand-rolled emitter, a Redux sto
 
 ## 4. The packages
 
-All five names are unpublished on npm as of 2026-09-13 (`webmcp-announce`, `webmcp-result`, `webmcp-schema-form`, `webmcp-state-registry`, `webmcp-a11y`), as is the `@parity` scope. Unscoped names are proposed deliberately: the existing ecosystem packages live under `@mcp-b/`, and an unscoped name does not imply affiliation with a vendor or with the working group.
+All names are unpublished on npm as of 2026-09-13 (`webmcp-announce`, `webmcp-result`, `webmcp-schema-form`, `webmcp-state-registry`, `webmcp-grant`, `webmcp-a11y`), as is the `@parity` scope. Unscoped names are proposed deliberately: the existing ecosystem packages live under `@mcp-b/`, and an unscoped name does not imply affiliation with a vendor or with the working group.
 
 ### 4.1 `webmcp-result` — the envelope
 
@@ -143,7 +147,24 @@ export function createAnnouncer(opts: {
 
 **Ships with wording guidance or it does harm.** A live region that announces too much is worse than one that announces nothing — it makes a page unusable with a screen reader. The package needs documented rules about what not to announce, and it must not be published before §5's real screen-reader run has happened.
 
-### 4.5 `webmcp-a11y` — the meta-package
+### 4.5 `webmcp-grant` — argument-bound approval
+
+**What it is.** A consent gate for consequential tools. A grant is hashed over the **canonical JSON of the arguments**, expires, and is consumed once — so an approval binds to *this call*, not to the tool. Changing any argument after approval invalidates it, and the refusal names the field that changed.
+
+```ts
+export async function mint(toolName: string, args: unknown, opts?): Promise<Grant>;
+export async function validate(id: string, toolName: string, args: unknown): Promise<GrantVerdict>;
+export function consume(id: string): void;
+export function approve(id: string, evidence: ApprovalEvidence): void;
+```
+
+**Why it is a package and not a pattern.** The mechanism is subtle in ways that are easy to get wrong and hard to notice: canonical JSON must be stable across key order, the hash must cover the arguments and not merely the tool name, expiry must be checked at consumption rather than at approval, and a consumed grant must not be replayable. Each of those is a security property, and each is a one-line mistake away.
+
+**What it ships with, and what it refuses to.** It records approval evidence — `isTrusted`, input modality, and the dwell time before approval — as *observations*, and it must never gate on them. [#288](https://github.com/webmachinelearning/webmcp/issues/288) shows a user agent that both calls tools and drives the page can satisfy a page-side approval, and every page-side test that would catch that is an accessibility barrier for switch access, voice control and screen reader users. The README has to say page-side approval is **necessary, not sufficient**, or the package invites exactly the CAPTCHA reflex this project argues against.
+
+**Done when:** a consumer with a different consequential action — not a booking — mints, approves and consumes a grant without touching the internals.
+
+### 4.6 `webmcp-a11y` — the meta-package
 
 A single install that pulls the four and re-exports them, for the common case. Worth it only if the four actually compose cleanly, which is unknown until they exist. **Decide after 4.4, not now.**
 
@@ -170,6 +191,8 @@ Each step ends in a state that is safe to stop at.
 **Step 2 — `webmcp-result`.** Smallest, zero-dependency, publishable alone. Establishes the repo layout, build, types, release and docs conventions once, on the package where a mistake costs least.
 
 **Step 3 — `webmcp-schema-form`.** Carries the interop findings. Parity's palette becomes its second consumer, and the "renders a tool it has never seen" test comes with it.
+
+**Step 3.5 — `webmcp-grant`.** Zero app coupling, an explicit upstream request, and independent of the `TState` work — so it can go at any point after Step 2, including in parallel if attention allows.
 
 **Step 4 — `webmcp-state-registry`.** The bulk. Parity drives it unchanged; the second consumer from Step 1 drives it differently. The WPT case stays upstream, referenced.
 
