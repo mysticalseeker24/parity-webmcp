@@ -98,9 +98,19 @@ We register with `{ readOnlyHint: true }`. `getTools()` returns:
 Chrome fills in the absent field. Harmless, but worth knowing before writing an
 exact-match assertion on annotations.
 
-## 6. `execute` is called with ONE argument — no options, no `signal`
+## 6. `execute` is called with ONE argument — no options, no `signal` (Chrome 152 only; fixed in 153)
 
 Found in Phase 2, the first time a tool destructured its second parameter.
+
+> **Corrected 2026-09-13.** This is **implementation lag, not a spec gap.** The
+> draft passes `ToolExecuteCallbackOptions.signal` to `execute`; Chromium
+> threads it in CL 8025300, which shipped in 153. Chrome 152 branched before
+> that landed. Verified here on Chromium 153 (Edge 153.0.4234.32): `execute`
+> receives two arguments, `optionsKeys: ["signal"]`, and the signal is a real
+> `AbortSignal`. Thanks to @mlmrx on
+> [#308](https://github.com/webmachinelearning/webmcp/issues/308) for pointing
+> out that the earlier framing described a browser rather than the spec.
+> Everything below remains true of 152, which is the shipping stable build.
 
 `webmcp-types` declares `execute(input, { signal })`, and TOOLS.md §3 shows
 `execute: async ({ slot_id }, { signal }) => …`. Chrome 152 calls:
@@ -125,7 +135,9 @@ object; they receive an `ExecuteContext` the factory builds.
 
 **Consequence for Tier 3:** `watch_earlier_slot` cannot rely on the browser
 supplying an `AbortSignal` in Chrome 152. It will need its own cancellation
-(a tool, or a hold-expiry bound) rather than the documented `signal`.
+(a tool, or a hold-expiry bound) rather than the documented `signal`. On 153
+the signal does arrive, so this becomes a compatibility measure rather than a
+permanent one — but a page that wants to work on stable today still needs it.
 
 ## 7. `requestUserInteraction()` does NOT exist in Chrome 152 (spec issue #165)
 
@@ -155,6 +167,15 @@ still unverified — check it there before claiming anything either way.
 
 ## 9. A caller's abort cancels the report, not the work (spec issue #299)
 
+> **Corrected 2026-09-13.** Originally written as though a tool could never
+> observe the caller's abort. That described Chrome 152. On Chromium 153 the
+> signal arrives and a loop that checks it *does* stop. The measurements below
+> are retained because 152 is the shipping stable build, but the framing was
+> wrong: this is conformance lag, not something the spec fails to provide.
+> Both browsers are reported separately below.
+
+### Chrome 152 — no signal reaches `execute`, so nothing stops
+
 `executeTool(tool, args, { signal })` **is** accepted and does reject the caller
 on abort. But because `execute` receives no options argument (finding 6), the
 tool cannot observe the abort — and it does not stop.
@@ -182,6 +203,36 @@ Consequences for anyone building on this:
   cannot reach the tool body today.
 - `AbortError.cause` is `undefined`, so there is currently no vehicle for the
   "reject with the tool's result attached" shape proposed in #299.
+
+### Chromium 153 — the tool stops, and the payload is still discarded
+
+Same probe, Edge 153.0.4234.32:
+
+```
+execute:  argc 2, optionsKeys ["signal"], a real AbortSignal
+tool:     observed the abort at item 2 and stopped
+page:     <body data-applied="3">      (3 of 5, not 5 of 5)
+caller:   AbortError "stopped by the probe", cause: undefined
+```
+
+So the write is genuinely cancelled, which is the important fix. What does
+*not* change is the settlement: the tool knew it had applied three of five and
+that `{ applied, remaining }` is still discarded, because the caller's promise
+has already rejected and `AbortError.cause` is `undefined`. That is the
+original #299 question, and it survives the Chromium fix.
+
+**One further observation on 153, not previously reported.** The caller's abort
+reason does not reach the tool. Aborting with
+`new DOMException("stopped by the probe", "AbortError")` gives:
+
+```
+caller's rejection .message  →  "stopped by the probe"
+tool's signal.reason.message →  "signal is aborted without reason"
+tool's signal.reason === the caller's object  →  false
+```
+
+The tool is told *that* it was cancelled but never *why*, so a tool cannot
+annotate its final value with the cause even once it can produce one.
 
 Reported on [#299](https://github.com/webmachinelearning/webmcp/issues/299).
 

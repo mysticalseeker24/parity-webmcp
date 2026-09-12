@@ -164,6 +164,13 @@ export function startRegistry(
    * on `confirm_booking` — an agent told a booking failed will retry, which is
    * the one thing that must not happen.
    *
+   * This is a Chromium conformance bug, not a spec gap: #248 already says
+   * unregistration must not orphan a started execution, and CL 8224887 fixed
+   * it in 153 — verified here on Chromium 153 via Edge, where the same tool
+   * resolves normally. The guard stays because 152 is the shipping stable
+   * build, and can be deleted once that is no longer true. The WPT case that
+   * pins the behaviour is web-platform-tests/wpt#62642.
+   *
    * Only the individual unregistration is skipped. Registrations are never
    * held back, so a tool that should appear appears in the same sync — an
    * earlier version deferred the whole re-sync and the calendar then asked for
