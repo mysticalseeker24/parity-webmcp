@@ -17,7 +17,9 @@ The WebMCP ecosystem already has runtime, transport, React bindings and type def
 | `webmcp-result` | The `ToolResult` envelope: refusals fulfil with `ok: false, kind`, only bugs throw ([#282](https://github.com/webmachinelearning/webmcp/issues/282)) | Agents currently cannot distinguish "you may not" from "it broke" |
 | `webmcp-state-registry` | `available(state)` registration with `reason_code` / `unlock_by` for every non-live tool ([#255](https://github.com/webmachinelearning/webmcp/issues/255), [#262](https://github.com/webmachinelearning/webmcp/issues/262)) | Includes the skip that fixes [#300](https://github.com/webmachinelearning/webmcp/issues/300) — a bug every state-driven registry has and most have not noticed |
 
-**The honest caveat.** Extracting a package means committing to an API surface, and the API here has been proven against exactly one app. The right order is: a second app first, then extraction from what the two have in common. A package extracted from one caller is a guess.
+**The honest caveat.** Extracting a package means committing to an API surface, and the API here has been proven against exactly one app. The right order is: a second consumer first, then extraction from what the two have in common. A package extracted from one caller is a guess.
+
+**The full plan is in [`PACKAGES.md`](./PACKAGES.md)** — ordered by measured import coupling rather than by how good each idea sounds, which reverses the obvious order: `result` is 74 lines with zero imports and nearly free, while the announcer is the thing the ecosystem lacks *and* the most app-tangled, so it goes last. It also records the gate: nothing ships before a real screen-reader run, because publishing an accessibility package whose accessibility is only inferred would repeat the mistake this project criticises.
 
 **The `defineTool` factory is deliberately not on that list.** It is the one piece that is genuinely app-shaped — it knows about voice aliases, undo, and audit because *this* app needs them. It should stay a pattern to copy, not a dependency to take.
 

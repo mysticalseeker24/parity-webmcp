@@ -44,7 +44,7 @@
 - [What we found in the browser](#what-we-found-in-the-browser)
 - [Deliberate non-choices](#deliberate-non-choices)
 - [Scope](#scope)
-- [Where this goes next](./docs/FUTURE.md)
+- [Where this goes next](./docs/FUTURE.md) · [extraction plan](./docs/PACKAGES.md)
 - [License](#license)
 
 ---
@@ -414,6 +414,7 @@ Building this turned up several behaviours that contradict `webmcp-types` and th
 | **`execute` is called with ONE argument** — no options, no `signal` | `({ id }, { signal }) =>` throws on the destructure *before the tool body runs*; the browser then reports every tool as failed with nothing in the console. The most expensive finding here. |
 | **`requestUserInteraction()` does not exist in Chrome 152** | The complete `ModelContext` surface is `executeTool, getTools, ontoolchange, registerTool`. It is the right home for approval (#165), and its absence is why the page card is the only channel. |
 | `annotations` come back **defaulted**, not echoed | Do not assert deep equality against what you registered |
+| **The declarative and imperative paths disagree about who called** | On one browser (Chromium 153), `SubmitEvent.prototype` carries `agentInvoked`, so a declarative form handler can tell an agent from a person. An imperative tool is handed `ToolExecuteCallbackOptions { signal }` and nothing else — no identity, no scope, no correlation id. We are entirely imperative, which is why the actor in our announcements is inferred rather than known. Reported on [#96](https://github.com/webmachinelearning/webmcp/issues/96). |
 | **On Chrome 152 a caller's abort cancels the report, not the work** | `executeTool(tool, args, {signal})` rejects the caller, but 152's `execute` never sees the signal, so the tool runs to completion and its writes land — measured at `<body data-applied="5">` after the caller aborted. An agent that aborts a batch and retries has applied it twice. **Conformance lag, not a spec gap:** verified on Chromium 153 (Edge), the signal arrives, the loop stops at 3 of 5, and only 3 writes land. What survives on 153 is the settlement question — the tool's `{applied, remaining}` is still discarded and `AbortError.cause` is `undefined`. Reported on [#299](https://github.com/webmachinelearning/webmcp/issues/299). |
 | **On Chrome 152 a tool that unregisters itself mid-execute rejects its caller, after succeeding** | Rejects with `"The operation failed for an unknown transient reason (e.g. out of memory)"` while the action has already landed. Any registry deriving its live set from page state hits this, since a state-changing tool routinely removes itself, and an agent told the booking failed will retry. **A Chromium conformance bug, not a spec gap** — [#248](https://github.com/webmachinelearning/webmcp/pull/248) already covers it, CL 8224887 fixed it, and it is verified resolved here on Chromium 153. We keep the page-side mitigation (skip the unregistration of a running tool) because 152 is the shipping stable build, and contributed the [WPT case](https://github.com/web-platform-tests/wpt/pull/62642) that pins it. |
 

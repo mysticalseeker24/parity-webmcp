@@ -238,6 +238,41 @@ Reported on [#299](https://github.com/webmachinelearning/webmcp/issues/299).
 
 ---
 
+## 10. The declarative and imperative paths disagree about who called (spec issue #96)
+
+Measured on one browser, Chromium 153.0.4234.32 (Edge), so this is not a
+version skew between the two paths.
+
+**Declarative.** `SubmitEvent.prototype` carries `agentInvoked`:
+
+```
+["agentInvoked", "respondWith", "submitter"]
+```
+
+A form handler can tell an agent-submitted form from a person-submitted one.
+
+**Imperative.** The whole of what `execute` is handed:
+
+```webidl
+dictionary ToolExecuteCallbackOptions { required AbortSignal signal; };
+```
+
+No identity, no scope, no correlation id. `ModelContextClient` and
+`requestUserInteraction` appear zero times in `index.bs` — #96 §3 describes a
+surface that has since been replaced, and the current one is narrower.
+
+**Why it matters here.** Everything we do is imperative (the declarative API is
+unavailable in ChatGPT's browser — TOOLS.md §1), so we are on the side with no
+caller distinction at all. Our actor attribution is a page-side heuristic for
+exactly this reason, which is why the live-region announcement says the actor
+is *inferred*. Two authors building the same capability, one declaratively and
+one imperatively, get different audit and security primitives from the same
+browser.
+
+Reported on [#96](https://github.com/webmachinelearning/webmcp/issues/96).
+
+---
+
 ## 8. Confirmed as documented
 
 - `document.modelContext` exists; `navigator.modelContext` is `undefined`
