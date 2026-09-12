@@ -16,7 +16,12 @@
   --color-ink: #1e2a4a; /* deep indigo — body text, 13:1 on stock */
   --color-ink-soft: #46527a; /* 7:1 on stock — secondary text only */
   --color-spot: #ef8358; /* peach — decoration, or text ON ink */
-  --color-spot-deep: #d9663a; /* 4.6:1 on stock — small marks, borders */
+  /* Measured, not estimated: 5.31:1 on stock, 4.81:1 on stock-deep, 5.74:1 on
+     paper. The previous value (#d9663a) carried a "4.6:1 on stock" comment and
+     actually measured 3.09:1, so every error message and link using it failed
+     WCAG 1.4.3 AA. axe-core now runs over each stage in scripts/a11y-audit.mjs
+     so a colour cannot claim a ratio it does not have. */
+  --color-spot-deep: #a64322; /* deep terracotta — error text, links, borders */
 
   --font-display: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
 }

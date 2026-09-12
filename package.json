@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:browser": "node scripts/verify-browser.mjs",
+    "audit:a11y": "node scripts/a11y-audit.mjs",
     "verify": "npm run typecheck && npm run test && npm run build && npm run verify:browser"
   },
   "dependencies": {

@@ -324,7 +324,7 @@ Highlights, each backed by a test:
 - **The calendar grid** is a real `<table>` with a `<caption>` and scoped headers, one tab stop via roving `tabindex`, arrow/Home/End/PageUp/PageDown movement, Enter to hold, Escape to leave rather than trap, and the focused cell announced.
 - **Nothing is conveyed by colour alone** — selected, refused, held, taken, the WebMCP badge and every error carry text or an `aria-hidden` glyph beside a word.
 - **Date of birth is a text input with a stated ISO example**, not a date picker. The tool validates it and returns a correction naming the field, wired to the input with `aria-invalid` and `aria-describedby`.
-- **Contrast is a design constraint, not a preference.** The risograph palette is indigo on cream at ~13:1 for all body text. Peach is ~2.2:1 on cream, so it is decoration or ink-on-peach only and never carries body copy.
+- **Contrast is a design constraint, not a preference,** and it is measured rather than asserted. Indigo on cream is 12.3:1 for body text; the peach spot colour is 2.27:1 and therefore decoration or ink-on-peach (5.4:1) only. The deep terracotta that carries error text and links is 5.31:1 on cream and 4.81:1 on the deeper panel. Those numbers are measured — an earlier value shipped with a comment claiming 4.6:1 while actually measuring 3.09:1, so every error message using it failed 1.4.3 AA. `npm run audit:a11y` now runs axe-core over every stage of the flow, including a rendered refusal, so a colour cannot claim a ratio it does not have.
 - **The loading screen never gates content** — the app mounts and registers underneath it from the first frame, `prefers-reduced-motion` skips it entirely, any key dismisses it, and it is `aria-hidden`.
 
 ---
@@ -389,6 +389,7 @@ Then open the dev URL in a WebMCP browser (see [above](#1-open-it-where-an-agent
 | `src/lib/undo.ts` | Inverse snapshots for reversible tools. Gated tools are never undoable. |
 | `src/lib/webmcpInterop.ts` | The seam between what `webmcp-types` promises and what Chrome does. |
 | `src/data/` | Synthetic fixtures: 16 providers, deterministic slots, coverage rules as data. |
+| `scripts/a11y-audit.mjs` | axe-core over every stage of the flow, plus the accessibility tree Chrome exposes. Not a screen-reader result — see [`docs/SCREEN_READER.md`](./docs/SCREEN_READER.md). |
 | `scripts/verify-browser.mjs` | 36 assertions against real Chrome over CDP, including that every surface mirrors a tool call made from any other. |
 | `scripts/run-evals.mjs` | The structural adversarial evals. |
 
