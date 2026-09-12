@@ -99,6 +99,8 @@ Parity fixes this inside the standard's own primitives. Every tool execution —
 
 The wording always comes from the tool's own `announce()`, never from a call site, so it cannot drift from what actually happened. The same lines are rendered on screen, so a sighted user can also see that the agent changed something.
 
+**The actor is inferred, not known.** `executeTool()` carries no caller identity: when the palette invokes a tool through the browser, the browser calls the same closure the agent's calls reach. The page marks the call it is about to make, immediately before making it, and treats anything unmarked as the agent — which errs toward *overstating* agent involvement rather than hiding it. That is a heuristic, and on [#277](https://github.com/webmachinelearning/webmcp/issues/277) the issue author confirms caller attribution cannot be made reliable from today's `executeTool()` surface; it would need a provenance signal in the API or user-agent bookkeeping. We keep the announcement because knowing *something other than me* acted is the information a screen-reader user is currently denied entirely — but the claim is "inferred", not "known".
+
 ---
 
 ## How WebMCP is implemented

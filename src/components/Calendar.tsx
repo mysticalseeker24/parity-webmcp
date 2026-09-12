@@ -98,12 +98,13 @@ export function Calendar() {
   // fetched slots on screen unfiltered — the tool had taken effect but the grid
   // still offered times it had just excluded.
   //
-  // Gated on the tool actually being live. Re-registration is deferred while a
-  // tool is executing (#300), so selecting a provider re-renders this component
-  // before get_availability has been registered; asking then returned
-  // `unavailable`, and the one-shot guard below made that transient miss
-  // permanent — the grid stayed unclickable for the rest of the session.
-  // Keying on liveTools means the request is retried the moment it can succeed.
+  // Gated on the tool actually being live, and the one-shot guard below is
+  // released on refusal. An earlier #300 fix deferred whole re-syncs, so this
+  // component could ask for availability before get_availability had been
+  // registered, take an `unavailable`, and latch that transient miss for the
+  // rest of the session. The registry no longer holds registrations back, so
+  // that race is gone at the root — this stays because asking for a tool that
+  // is not live is wrong regardless of how promptly it arrives.
   const canFetch = liveTools.includes("get_availability");
   const fetchKey =
     providerId && canFetch
