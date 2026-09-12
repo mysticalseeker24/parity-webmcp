@@ -70,7 +70,7 @@ unregistration that destroyed it.
 No server. A static SPA; the browser is the MCP client, the page is the server
 made of closures.
 
-- **19 tools defined, never more than 7 registered.** Each carries
+- **19 tools defined, never more than 8 registered.** Each carries
   `available(state)`; the registry diffs
   `allTools.filter(t => t.available(state))` on every store change and
   registers/unregisters via `AbortController`. Illegal actions are prevented by
