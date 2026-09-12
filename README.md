@@ -44,7 +44,7 @@
 - [What we found in the browser](#what-we-found-in-the-browser)
 - [Deliberate non-choices](#deliberate-non-choices)
 - [Scope](#scope)
-- [Where this goes next](./docs/FUTURE.md) · [extraction plan](./docs/PACKAGES.md)
+- [Where this goes next](./docs/FUTURE.md) · [extraction plan](./docs/PACKAGES.md) · [engineering practices](./docs/ENGINEERING.md)
 - [License](#license)
 
 ---

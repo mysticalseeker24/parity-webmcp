@@ -46,6 +46,8 @@ Full specifications live in `.agent/`. Load the ones relevant to the current tas
 | `.agent/SPEC_ISSUES.md` | Before Phase 2 and before Phase 6. Maps open WebMCP spec issues (#288, #262, #282, #255, #277, #286, #278) to concrete design decisions. Cite issue numbers in code comments. |
 | `.agent/PHASE1_FINDINGS.md` | Before touching `getTools()` / `executeTool()`. Real-Chrome behaviour that contradicts `webmcp-types`. |
 | `.agent/PROMPTS.md` | The ordered per-PR prompt sequence. The human pastes these; Claude Code does not skip ahead in it. |
+| `docs/ENGINEERING.md` | **Before making a claim, writing a test, or posting upstream.** Working practices, each derived from a specific mistake made here — measuring rather than estimating, browser vs specification, tests that pass before the fix, auditing failure states, and contributing to a standards repo. |
+| `docs/PACKAGES.md` | Before starting the extraction. Ordered by measured import coupling, with the two gates that stop it. |
 
 When a task spans several, read `PROJECT_SPEC.md` first for the shape, then the specific file for the detail.
 
