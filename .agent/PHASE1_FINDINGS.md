@@ -153,6 +153,40 @@ approval routes through it and is recorded with `channel: "host_elicitation"`;
 the page card stays as the fallback. Support in ChatGPT's built-in browser is
 still unverified — check it there before claiming anything either way.
 
+## 9. A caller's abort cancels the report, not the work (spec issue #299)
+
+`executeTool(tool, args, { signal })` **is** accepted and does reject the caller
+on abort. But because `execute` receives no options argument (finding 6), the
+tool cannot observe the abort — and it does not stop.
+
+Measured in Chrome 152 with a tool applying items in a loop, writing each one
+to the DOM as it goes, with the caller aborting partway:
+
+```
+caller:  AbortError "stopped by the probe"   (cause: undefined)
+tool:    ran all 5 iterations to completion
+page:    <body data-applied="5">
+```
+
+Every write landed. The caller was told the operation was aborted. This is the
+same shape as the #300 problem — an action reported as not-having-happened
+after it happened — reached by a different route, and it is worse for a write
+tool: an agent that aborts a batch and retries has applied it twice.
+
+Consequences for anyone building on this:
+
+- Do not treat an `AbortError` from `executeTool()` as evidence that nothing
+  was written. It is evidence that you stopped listening.
+- A page that needs real cancellation has to own it: a page-side controller the
+  tool checks, driven by a stop affordance on the page. The caller's signal
+  cannot reach the tool body today.
+- `AbortError.cause` is `undefined`, so there is currently no vehicle for the
+  "reject with the tool's result attached" shape proposed in #299.
+
+Reported on [#299](https://github.com/webmachinelearning/webmcp/issues/299).
+
+---
+
 ## 8. Confirmed as documented
 
 - `document.modelContext` exists; `navigator.modelContext` is `undefined`
